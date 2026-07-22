@@ -1,6 +1,6 @@
 
 0. What Telechron Is (North Star)
-   Telechron is a self-repairing, self-building task engine. A user describes an outcome in natural language; the system assembles whatever projects, functions, workflows, and modules are needed to produce it — and when any part breaks, it repairs itself.
+   Telechron is a self-repairing, self-building task engine. A user describes an outcome in natural language; the system assembles whatever projects, functions, workflows, and modules are needed to produce it — and when any part breaks, it repairs itself. Unlike most autonomous coding systems, it repairs and builds against a living record of intent, not source code alone — so it can tell the difference between "matches what the tests check" and "matches what the software is supposed to do" (R-NS4).
 
    (Naming: the canonical spelling is "Telechron", matching the repository. Earlier drafts used "Telochron"; treat the two as the same system.)
 
@@ -31,6 +31,10 @@ No capability may introduce a bespoke fix/verify/revert path when the generic on
 R-NS3 — Autonomy Is Bounded to Patching, Never to Self-Expansion of Privilege
 
 A Project's FullyAutonomous repair policy authorizes autonomous patch-and-commit of *existing* code only. It never authorizes: installing/synthesizing new capabilities or modules (that always passes R-BUILD5's human gate — see R-FIX10), modifying the permission, Persona, approval-gate, secret-handling, or repair-pipeline code itself (that always routes to RequireApproval — see R-SEC4), or granting a capability the triggering Persona does not already hold (see R-SEC9). "Fully autonomous" is bounded self-repair, not unbounded self-modification.
+
+R-NS4 — Repair and Synthesis Are Intent-Aware, Not Source-Only
+
+Most autonomous coding systems reason only from source code and test outcomes — they know what a system *does*, never what it was *meant* to do. Telechron holds a living Design Document (R-DM16) per Project — the same role `TechDesign.md`/`ImplementationPlan.md` play for Telechron itself (R-DM16a) — and every repair, planning, and synthesis Persona receives it as standing context (R-DM6a), not an optional lookup. A fix that makes tests pass but contradicts stated architectural intent is a Drift Finding, not a success (R-FIX13). Because an agent rewriting its own spec to match whatever it already built would defeat the entire point, Design Document edits are themselves a privileged path requiring human approval (R-DM16b, R-SEC4) — intent can only drift on purpose, with a human signing off, never silently.
 
 1. System Shape (The Fixed Skeleton)
    R-SYS1 — Host
@@ -313,6 +317,9 @@ Content generation
 
 Agentic operations
 
+R-DM6a — Design Document as Standing Context
+Repair, Intent Planning, and Capability Synthesis Personas (R-DM6) always receive their Project's active Design Document (R-DM16) revisions alongside the source code and Finding/request context — not as an optional tool call, but as standing context injected the same way the system prompt is. This is what distinguishes Telechron's repair/synthesis from source-only autonomous coding: the Persona can check a proposed fix or new capability against stated intent, not only against what currently compiles or passes. Design Document content is untrusted-content-isolated the same as any Finding/connector text (R-LLM5) only insofar as it originates from an external Connector-fed source (e.g. an imported spec); Design Document content edited through R-DM16b's own approval gate is treated as trusted, since it has already passed human review.
+
 R-DM7 — Module
 Hot-reloadable physical distribution unit (ZIP / Assembly / Script + Source Code + Self-Test + Permissions).
 
@@ -515,6 +522,31 @@ Project membership / ownership (Projects are the unit of Trust per R-DM1; owners
 
 v1 scoping note: a single-operator deployment is permitted, but identity, role, and approver attribution are modeled from the start so multi-user governance needs no domain-model rework. Approval events record which User approved; approval authority is enforced Host-side (R-SEC8), never assumed from mere frontend access.
 
+R-DM16 — Design Document
+A Project's living requirements and architectural-intent record — the same role `TechDesign.md` plays for Telechron itself (R-DM16a makes this reflexive). It is the primary context every repair, synthesis, and planning Persona receives, so decisions are checked against what the software is *supposed* to do, not only what it currently does or what its tests currently assert.
+
+Contains:
+
+A set of Requirement entries, each with:
+
+Stable Requirement ID (e.g. `R-DM16`, matching the `R-XXX` convention this document uses)
+
+Title & body text (the intent/architecture prose)
+
+Status (Active / Superseded / Deprecated)
+
+Revision history (who/what changed it, when, and why — see R-DM16b)
+
+Project FK (a Design Document belongs to exactly one Project; Telechron's own `TechDesign.md`/`ImplementationPlan.md` are the Design Document for Telechron's self-repair scope per R-DM16a)
+
+Design Documents are versioned, not overwritten: each edit creates a new revision, preserving the prior text so drift and intent can be diffed over time, mirroring the immutability the rest of the repair-lineage chain relies on (R-DM3a).
+
+R-DM16a — Reflexive Self-Application
+Telechron applies R-DM16 to itself: the Host Sentinel's self-repair loop (R-REL3) consults Telechron's own Design Document (seeded from `TechDesign.md` + `ImplementationPlan.md`) exactly as any managed Project's repair Persona consults its Project's Design Document. One mechanism, no special-cased self-repair path — consistent with R-ENG4 (repair primitives are never duplicated).
+
+R-DM16b — Design Document Change Control
+Design Document edits are a privileged-path change (R-SEC4): they route to RequireApproval regardless of Project Repair Policy, and are never performed by an autonomous Persona rewriting the document to match code it just produced. This is the control that prevents "drift laundering" — an agent silently updating the spec to agree with whatever it already built, which would erase the entire point of holding intent separate from implementation. A Design Document revision proposed by Capability Synthesis (R-BUILD3) or Repair (R-FIX2) is itself a diff a human reviews and approves before it becomes the new Active revision; humans may also edit it directly outside the pipeline.
+
 3. Core Capabilities
    3.1 Test & Run Execution
    R-RUN1
@@ -558,6 +590,8 @@ Snapshot
 → Approval Gate (if required)
 → Revert on Failure
 → Commit / Hot Reload on Success
+
+Generate Fix consults the Project's active Design Document (R-DM16) as standing context (R-DM6a), alongside the Finding and source snapshot — a fix is generated against stated intent, not source code alone.
 
 R-FIX2a — Repair Plan (Batch Aggregation)
 For scheduled/batch Finding scans (e.g., the Weekly Security Scan, §8), the pipeline may aggregate multiple related Findings into a single Repair Plan before Generate Fix, so one Approval Gate covers a bundled set of patches rather than one gate per Finding. A Repair Plan is distinct from an Intent Plan (R-DM9, which is NL→workflow/module gap analysis); it is the batch counterpart of a single Repair Attempt (R-DM3a) and shares the same provenance and diff-scope rules (R-SEC3, R-FIX12).
@@ -603,6 +637,9 @@ Beyond attempt caps, the pipeline keeps a per-file patch-diff signature history.
 
 R-FIX12 — Repair Diff Scope Limits
 Patches exceeding a configurable file-count/line-count threshold, or touching files outside the Finding's declared origin location, require elevated review (distinct UI treatment, mandatory diff-by-diff acknowledgment) regardless of Project Repair Policy. This gives R-SEC4's privileged-path routing and human reviewers a scope signal to work from, countering rubber-stamp fatigue on routine auto-repairs.
+
+R-FIX13 — Architectural Drift Detection
+Verify (R-FIX2) includes a Design Document consistency check: the generated patch is evaluated against the Requirement entries (R-DM16) it touches or is tagged against. A patch that satisfies its Finding but contradicts an Active Requirement — implements behavior the Design Document explicitly rules out, or silently narrows/broadens a documented contract — is flagged as a Drift Finding rather than committed/hot-reloaded silently, and routes to RequireApproval regardless of Project Repair Policy (same privileged-path treatment as R-SEC4). This is the mechanical half of R-DM6a's intent-awareness: without it, a Design Document that Personas merely read but nothing ever checks against degrades into unread documentation and architectural drift proceeds exactly as it would without R-DM16 at all.
 
 3.3 Workflows & Functions
 R-WF1
@@ -658,6 +695,8 @@ Self-tests
 Modules
 
 All synthesized capabilities are verified inside containers.
+
+Capability Synthesis consults the Project's active Design Document (R-DM16) as standing context (R-DM6a) during generation, and — like Repair (R-FIX13) — Container Verification includes a Design Document consistency check before Module Installation. A synthesized capability that fulfills the Intent Plan but contradicts an Active Requirement is flagged as a Drift Finding at the Human Approval gate (R-BUILD5) rather than installed.
 
 R-BUILD4
 Environment failures are distinguished from code failures.
@@ -903,6 +942,8 @@ Scheduling
 
 Secrets Management
 
+Design Document (view Requirement entries and revision history; propose/approve edits per R-DM16b; view flagged Drift Findings per R-FIX13)
+
 R-UI3
 Realtime updates across all active surfaces.
 
@@ -980,7 +1021,7 @@ R-SEC3 — Repair Provenance & Commit Attestation
 Every auto-committed or hot-reloaded patch carries a signed, immutable provenance record linking the commit to its source Finding(s), generating Persona, LLM connection/model version, and Verify results (the R-DM3a Repair Attempt is its home). Provenance is stored independently of the artifact it describes. Without this, a poisoned Finding that produces a malicious "fix" under FullyAutonomous leaves no forensic trail — and R-REL3 explicitly lets the repair engine repair itself, so the compromise could be self-reinforcing.
 
 R-SEC4 — Privileged-Path Change Control
-Patches touching Persona definitions, permission/capability-evaluation code, the repair pipeline itself, secret-handling code, approval-gate logic, or module trust policy MUST route to RequireApproval regardless of Project Repair Policy, and surface on a distinct "privileged diff" review surface. R-FIX7 permits multi-file atomic patches, so without this a single injection could bundle a privilege escalation with a legitimate fix and auto-commit it — patching away the very control that would catch it.
+Patches touching Persona definitions, permission/capability-evaluation code, the repair pipeline itself, secret-handling code, approval-gate logic, module trust policy, or a Project's Design Document (R-DM16b) MUST route to RequireApproval regardless of Project Repair Policy, and surface on a distinct "privileged diff" review surface. R-FIX7 permits multi-file atomic patches, so without this a single injection could bundle a privilege escalation with a legitimate fix and auto-commit it — patching away the very control that would catch it. Design Document edits are included in this list for the same reason: an autonomous agent that can rewrite its own spec to match whatever it already built can launder architectural drift the same way it could launder a privilege escalation.
 
 R-SEC5 — Secret Resolution Boundary for Agentic Calls
 R-SEC1 keeps raw secrets out of prompts, but the Persona still decides which call to make and often constructs the request. Raw secrets are resolved and injected strictly inside the Host/Connector runtime layer at the final hop — never inside the Persona's tool-call construction step — and tool results returned to the LLM are scrubbed/re-tokenized before re-entering prompt context (tool results commonly echo back into the next turn). This closes the largest ambiguity in "never in LLM context."
@@ -1091,6 +1132,8 @@ Safely interact with external services through Connectors and Secret-backed auth
 Pass typed Artifacts between workflow steps.
 
 Enforce module capability permissions and container sandbox restrictions.
+
+Generate a repair or synthesized capability that consults the Project's Design Document as standing context, and correctly flags a Drift Finding — routing to human approval — when the result contradicts an Active Requirement (R-DM16, R-FIX13).
 
 Surface every capability through the frontend.
 

@@ -113,6 +113,7 @@ Goal: the rest of the persisted entities, built on the secured core. Each is cre
   - [ ] `Connector` (R-DM11) — incl. deprecation flag (R-DM7a); reusable across projects.
   - [ ] `Artifact` (R-DM13) — **metadata/reference only in DB; binary payload lives outside SQLite** (R-PER7).
   - [ ] `Toolchain` (R-DM14).
+  - [ ] `DesignDocument` + `Requirement` (R-DM16) — versioned revisions (not overwrites), Requirement entries with stable `R-XXX` IDs, status (Active/Superseded/Deprecated), Project FK. **Seed Telechron's own Design Document from `TechDesign.md` + `ImplementationPlan.md`** (R-DM16a) so the reflexive self-repair path has real content from day one instead of an empty placeholder.
 - [ ] Implement **binary Artifact blob storage** outside SQLite (filesystem or blob store), DB holds references only (R-PER7).
   - **Done when:** storing a large artifact does not grow the SQLite file; only metadata is in the DB.
 - [ ] Implement **retention policy** scaffolding for Runs/Findings/logs/LLM records with archival-before-delete; exempt repair-lineage data (R-PER7).
@@ -187,6 +188,9 @@ Goal: the one generic repair loop (R-NS2). **No bespoke fix/verify/revert paths 
 - [ ] 🧱 **Findings generation** from Runs and workflow failures (R-FIX1); the file-length lint from Phase 0 now emits a code-quality Finding on violation (R-ENG1).
 - [ ] 🔒 **Environment vs Code classification** (R-FIX8): only Code-classified Findings become repair candidates; Environment (Stalled/TimedOut/network blips) route to retry/quarantine. Same mechanism as R-BUILD4 (do not duplicate).
 - [ ] 🧱 **The generic pipeline** (R-NS2, R-FIX2): Snapshot → Generate Fix → Apply → Verify (in container) → Approval Gate (if required) → Revert on failure → Commit/Hot-Reload on success.
+- [ ] 🔒 **Design Document as standing repair context** (R-DM6a, R-FIX2): Generate Fix always injects the Project's active Design Document (R-DM16) revisions alongside the Finding and source snapshot — not an optional tool call.
+- [ ] 🔒 **Architectural drift detection** (R-FIX13): Verify checks the patch against the Requirement entries it touches/is tagged against; a patch that satisfies its Finding but contradicts an Active Requirement becomes a Drift Finding and forces RequireApproval regardless of policy (same privileged-path treatment as R-SEC4).
+  - **Done when:** a patch engineered to pass its test while violating a stated Requirement is caught as a Drift Finding rather than auto-committed.
 - [ ] **Deterministic-before-LLM** ordering (R-FIX5); deterministic fixes may use the R-SYS10 fast-path.
 - [ ] **Repair routing by Finding origin** (R-FIX4) and **atomic multi-file patch transactions** (R-FIX7).
 - [ ] **Bounds & governance** (R-FIX3): attempt caps, per-repair cost caps, decline short-circuiting, cross-run dedup; Project Repair Policy gate (RequireApproval pauses verified patches).
@@ -194,7 +198,7 @@ Goal: the one generic repair loop (R-NS2). **No bespoke fix/verify/revert paths 
 - [ ] 🔒 **Repair concurrency & locking** (R-FIX9): exclusive locks per target; repair vs module hot-reload drain mutually exclude on module ID.
 - [ ] 🔒 **Oscillation/regression detection** (R-FIX11): per-file diff-signature history; a fix matching a prior reverted patch short-circuits to RequireApproval.
 - [ ] 🔒 **Repair-triggered synthesis routes through the human gate** (R-FIX10, R-NS3): if a fix needs a *new* capability/module, force R-BUILD5 approval regardless of policy.
-- [ ] 🔒 **Privileged-path change control** (R-SEC4): patches touching permission/Persona/approval/secret/repair-pipeline/trust-policy code force RequireApproval + a distinct privileged-diff review surface — regardless of policy.
+- [ ] 🔒 **Privileged-path change control** (R-SEC4): patches touching permission/Persona/approval/secret/repair-pipeline/trust-policy code, **or a Project's Design Document** (R-DM16b), force RequireApproval + a distinct privileged-diff review surface — regardless of policy.
 - [ ] 🔒 **Repair diff scope limits** (R-FIX12): oversized or out-of-origin patches require elevated review.
 - [ ] 🔒 **Repair provenance & commit attestation** (R-SEC3): every auto-commit/hot-reload carries a signed, immutable provenance record (source Finding, Persona, model version, verify results), stored independently. Populates the RepairAttempt (R-DM3a).
 - [ ] **Repair Plan batch aggregation** (R-FIX2a): batch scans aggregate related Findings under one Approval Gate; shares provenance + diff-scope rules.
@@ -215,9 +219,12 @@ Goal: composition and the natural-language front door.
 - [ ] **Intent planning** (R-BUILD1, R-BUILD2, R-DM9): deterministic when a rule/pattern matches, else Persona/LLM fallback; plans are side-effect-free; record which path produced the plan.
 - [ ] 🔒 **Capability gap approval flow** (R-BUILD5, R-BUILD3, R-BUILD4): NL → Intent Plan → Gap Analysis → **Human Approval** → Synthesis (source + self-test + module) → Container Verification → Install → Workflow Gen → Execution. NL never directly synthesizes/installs. Environment vs code failures distinguished during synthesis.
   - **Done when:** an NL request needing a missing capability cannot install it without passing the human gate; synthesized capability is capped at the requesting Persona's permissions (R-MOD8a).
+- [ ] 🔒 **Design Document consultation during synthesis** (R-BUILD3, R-DM6a): Capability Synthesis receives the Project's active Design Document as standing context; Container Verification runs the same drift check as R-FIX13 — a synthesized capability that contradicts an Active Requirement is flagged as a Drift Finding at the R-BUILD5 Human Approval gate rather than installed.
+- [ ] 🔒 **Design Document edit approval flow** (R-DM16b): Design Document revisions (whether proposed by Repair/Synthesis or edited directly) route through the same privileged-path Human Approval gate as R-SEC4; a revision only becomes Active after approval. A human may also edit directly.
+- [ ] **Reflexive self-application** (R-DM16a): wire Telechron's own Design Document (seeded in Phase 3 from `TechDesign.md`/`ImplementationPlan.md`) into the Host Sentinel's self-repair loop (R-REL3, Phase 9) via the same mechanism above — no special-cased path.
 - [ ] **Personas as the single editable home** for repair/planning/synthesis/generation logic (R-DM6); enforced by mediation (R-MOD8a) and reduced-permission profiles (R-LLM5).
 
-**Exit criteria:** an NL request produces a side-effect-free plan; approval drives synthesis→verify→install→workflow; a graph workflow with an approval gate runs durably across a restart with correct aggregate status.
+**Exit criteria:** an NL request produces a side-effect-free plan; approval drives synthesis→verify→install→workflow; a graph workflow with an approval gate runs durably across a restart with correct aggregate status; a synthesized capability that contradicts the Design Document is caught as a Drift Finding, not installed.
 
 ---
 
@@ -228,7 +235,7 @@ Goal: continuous, fair, observable operation.
 - [ ] **Scheduling** (R-SCH1, R-SCH4): runs serialize per machine, workflows per project; scheduled executions are WorkflowRuns; durable and DB-failure-resistant.
 - [ ] **Exclusive resource groups** (R-SCH2, R-DM8): mutually-exclusive resources enforced.
 - [ ] **Priority, starvation prevention, autoscaling hooks, reconnect** (R-SCH5): priority classes with aging; grace/reconnect resume; queue-depth autoscaling hooks.
-- [ ] **Host Sentinel repair loop** (R-REL3) — self-repair of the repair engine is a privileged path → always RequireApproval (R-SEC4).
+- [ ] **Host Sentinel repair loop** (R-REL3) — self-repair of the repair engine is a privileged path → always RequireApproval (R-SEC4). Consults Telechron's own Design Document via the Phase 8 reflexive wiring (R-DM16a) exactly as any managed Project's repair Persona would.
 - [ ] **Host scaling ceiling + migration path** (R-REL4): publish documented max agents/workflows/write-throughput and the SQLite→networked-RDBMS trigger; agents buffer telemetry across a Host outage; bounded restart-recovery.
 - [ ] 🧱 **Distributed tracing + health/readiness endpoints** (R-REL6): correlation/trace ID propagated Host→Agent→Container→persistence; liveness/readiness endpoints; watchdog + sentinel consume metrics + alerting thresholds.
 - [ ] **High-frequency telemetry batching** (R-PER5) — confirm it bypasses direct SQLite writes.
@@ -242,8 +249,8 @@ Goal: continuous, fair, observable operation.
 Goal: R-SYS3/R-UI1 mandate a UI surface for **every** backend capability. Build incrementally alongside each backend phase where possible; this phase is the completeness sweep.
 
 - [ ] **Feature-first SPA architecture** (R-UI4) with **realtime updates across all active surfaces** (R-UI3), authenticated via Phase 2 sessions/RBAC.
-- [ ] Required surfaces (R-UI2) — each is a task: Runs · Work Queue · Projects · Workflows (with graph editor) · Machines · Resources · Modules · Connectors · Toolchains · LLM Configurations · Assistant · Storefront · Scheduling · Secrets Management.
-- [ ] Security-specific surfaces implied by the new requirements: **privileged-diff review** (R-SEC4/R-FIX12), **approval queue with approver attribution** (R-WF5/R-DM15), **audit-log viewer** (R-SEC7), **LLM cost/spend dashboard** (R-LLM3/R-LLM4), **provenance / "why did this change" view** (R-SEC3/R-DM3a).
+- [ ] Required surfaces (R-UI2) — each is a task: Runs · Work Queue · Projects · Workflows (with graph editor) · Machines · Resources · Modules · Connectors · Toolchains · LLM Configurations · Assistant · Storefront · Scheduling · Secrets Management · **Design Document** (Requirement list/detail, revision history, propose/approve edit diff, Drift Finding views).
+- [ ] Security-specific surfaces implied by the new requirements: **privileged-diff review** (R-SEC4/R-FIX12), **approval queue with approver attribution** (R-WF5/R-DM15), **audit-log viewer** (R-SEC7), **LLM cost/spend dashboard** (R-LLM3/R-LLM4), **provenance / "why did this change" view** (R-SEC3/R-DM3a), **Drift Finding review** (R-FIX13 — surfaces alongside privileged-diff review since it shares the same approval gate).
 - [ ] Parity audit: enumerate every backend capability and confirm a corresponding surface exists (R-UI1). No capability ships UI-less.
 
 **Exit criteria:** every capability is reachable and controllable from the UI with realtime updates; security review/approval/audit surfaces exist.
@@ -279,6 +286,7 @@ Goal: R-SYS3/R-UI1 mandate a UI surface for **every** backend capability. Build 
 - **Every feature ships tests** (R-ENG6) and its **UI surface** (R-UI1).
 - **Security defaults to on:** if unsure whether to gate/audit/mediate, do it.
 - **Persist anything that survives restart** (R-PER2).
+- **Repair/synthesis is intent-aware, not source-only** (R-NS4, R-DM6a) — once Phase 8 lands, every repair/planning/synthesis Persona must receive the Design Document as standing context, and Design Document edits are always a privileged-path human approval (R-DM16b), never autonomous.
 
 ---
 
