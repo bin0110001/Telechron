@@ -25,6 +25,10 @@ var backupDirectory = Path.Combine(dataDirectory, "backups");
 builder.Services.AddTelechronPersistence(dbPath, backupDirectory);
 builder.Services.AddTelechronScheduledBackups();
 
+// R-PER7: Artifact binary payloads live outside SQLite.
+var artifactBlobDirectory = Path.Combine(dataDirectory, "artifacts");
+builder.Services.AddTelechronArtifactBlobStore(artifactBlobDirectory);
+
 // R-SEC7: physically separate SQLite file from the operational DB above.
 var auditDbPath = Path.Combine(dataDirectory, "telechron-audit.db");
 builder.Services.AddTelechronAuditLog(auditDbPath);

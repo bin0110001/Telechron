@@ -33,6 +33,24 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<ISecretRepository, SecretRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
         services.AddScoped<IProjectMembershipRepository, ProjectMembershipRepository>();
+        services.AddScoped<IMachineRepository, MachineRepository>();
+        services.AddScoped<ILlmConnectionRepository, LlmConnectionRepository>();
+        services.AddScoped<IToolchainRepository, ToolchainRepository>();
+        services.AddScoped<IFunctionRepository, FunctionRepository>();
+        services.AddScoped<IModuleRepository, ModuleRepository>();
+        services.AddScoped<IConnectorRepository, ConnectorRepository>();
+        services.AddScoped<IResourceRepository, ResourceRepository>();
+        services.AddScoped<IRunRepository, RunRepository>();
+        services.AddScoped<IPersonaRepository, PersonaRepository>();
+        services.AddScoped<IWorkflowRepository, WorkflowRepository>();
+        services.AddScoped<IWorkflowRunRepository, WorkflowRunRepository>();
+        services.AddScoped<IFindingRepository, FindingRepository>();
+        services.AddScoped<IIntentPlanRepository, IntentPlanRepository>();
+        services.AddScoped<IArtifactRepository, ArtifactRepository>();
+        services.AddScoped<IRepairAttemptRepository, RepairAttemptRepository>();
+        services.AddScoped<IDesignDocumentRepository, DesignDocumentRepository>();
+        services.AddScoped<IRequirementRepository, RequirementRepository>();
+        services.AddScoped<IRequirementRevisionRepository, RequirementRevisionRepository>();
 
         services.Configure<DatabaseBackupOptions>(o => o.BackupDirectory = backupDirectory);
         services.AddScoped<IDatabaseBackupService, SqliteDatabaseBackupService>();
@@ -43,6 +61,13 @@ public static class PersistenceServiceCollectionExtensions
     public static IServiceCollection AddTelechronScheduledBackups(this IServiceCollection services)
     {
         services.AddHostedService<ScheduledBackupHostedService>();
+        return services;
+    }
+
+    // R-PER7: Artifact binary payloads live outside SQLite.
+    public static IServiceCollection AddTelechronArtifactBlobStore(this IServiceCollection services, string rootDirectory)
+    {
+        services.AddSingleton<Sdk.Persistence.IArtifactBlobStore>(new FilesystemArtifactBlobStore(rootDirectory));
         return services;
     }
 }
