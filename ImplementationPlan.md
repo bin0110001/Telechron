@@ -48,18 +48,27 @@ Goal: a building, testable solution skeleton with CI, before any domain code.
 
 Goal: the minimum durable core the security floor needs — the DB, the repository/mapping seam, and **only** the entities security depends on (`User`, `Secret`, `Project`). The remaining ~14 domain entities are deferred to Phase 3, *after* the security seams exist, so security is never retrofitted onto them.
 
-- [ ] 🧱 Set up SQLite + EF Core with **WAL mode** and `busy_timeout`/backoff on `SQLITE_BUSY` from day one (R-PER1, R-PER6). Do not defer WAL — retrofitting write-contention handling is painful.
+- [x] 🧱 Set up SQLite + EF Core with **WAL mode** and `busy_timeout`/backoff on `SQLITE_BUSY` from day one (R-PER1, R-PER6). Do not defer WAL — retrofitting write-contention handling is painful.
   - **Done when:** DB opens in WAL; a concurrent-write test shows retry/backoff rather than a hard failure.
-- [ ] 🧱 Establish the **repository interface** layer and the **domain-model ↔ DB-entity separation** (R-PER3, R-PER4). Domain models are POCOs; DB entities are separate; a mapping layer bridges them.
+- [x] 🧱 Establish the **repository interface** layer and the **domain-model ↔ DB-entity separation** (R-PER3, R-PER4). Domain models are POCOs; DB entities are separate; a mapping layer bridges them.
   - **Done when:** one entity round-trips through a repository with domain and DB types distinct.
-- [ ] Implement **only the security-prerequisite entities** (migration + repository + round-trip test each):
-  - [ ] `User` + Role (Viewer/Operator/Admin) + notification target + project membership (R-DM15). Needed by API auth/RBAC and audit attribution.
-  - [ ] `Secret` (R-DM12) — encrypted value column; referenced only by handle. Needed by the secret seams.
-  - [ ] `Project` (R-DM1) — incl. Repair Policy (`FullyAutonomous` / `RequireApproval`) and owner (User FK). Projects are the unit of trust/scope (R-DM1), so RBAC and secret scoping need it. *(Its FKs to later entities — Runs, Workflows, etc. — are added when those land in Phase 3.)*
-- [ ] Implement **corruption guard + backup/restore** (R-REL2, R-REL5): scheduled `VACUUM INTO` to a rotating retention set; corruption recovery restores from latest verified backup (never silently empties). Document RPO/RTO. *(Do it now: it protects the audit log and secrets store from the moment they exist.)*
+- [x] Implement **only the security-prerequisite entities** (migration + repository + round-trip test each):
+  - [x] `User` + Role (Viewer/Operator/Admin) + notification target + project membership (R-DM15). Needed by API auth/RBAC and audit attribution.
+  - [x] `Secret` (R-DM12) — encrypted value column; referenced only by handle. Needed by the secret seams.
+  - [x] `Project` (R-DM1) — incl. Repair Policy (`FullyAutonomous` / `RequireApproval`) and owner (User FK). Projects are the unit of trust/scope (R-DM1), so RBAC and secret scoping need it. *(Its FKs to later entities — Runs, Workflows, etc. — are added when those land in Phase 3.)*
+- [x] Implement **corruption guard + backup/restore** (R-REL2, R-REL5): scheduled `VACUUM INTO` to a rotating retention set; corruption recovery restores from latest verified backup (never silently empties). Document RPO/RTO. *(Do it now: it protects the audit log and secrets store from the moment they exist.)*
   - **Done when:** a scheduled backup produces a restorable file; a simulated corruption restores rather than resets.
 
-**Exit criteria:** DB in WAL with backoff; `User`/`Secret`/`Project` persist and round-trip through repositories with domain/DB separation; backup/restore proven.
+**Exit criteria:** DB in WAL with backoff; `User`/`Secret`/`Project` persist and round-trip through repositories with domain/DB separation; backup/restore proven. ✅ MET.
+
+**Notes for next phases:**
+- Domain POCOs live in `Sdk/Domain/` (user decision — shared with Agent/Modules later); DB entities + EF config + repositories live in `Host/Persistence/` (Host is sole DB owner per R-SYS1). `Host/Persistence/Mapping/*Mapper.cs` bridges the two via extension methods (`ToDomain()`/`ToEntity()`/`ApplyTo()`).
+- WAL mode + `busy_timeout` (5000ms) are set via a `DbConnectionInterceptor` (`WalPragmaConnectionInterceptor`) on every connection open, since the Sqlite connection-string builder has no journal-mode property. EF Core's SQLite provider ships no built-in retrying execution strategy (that's SqlServer/Cosmos-only) — wrote a custom `SqliteRetryingExecutionStrategy` retrying on SQLITE_BUSY(5)/SQLITE_LOCKED(6) with exponential backoff, registered via `options.ReplaceService<IExecutionStrategyFactory, ...>`.
+- **RPO/RTO** (documented here per R-REL5, no separate doc yet): default scheduled backup interval is 6h (`DatabaseBackupOptions.BackupInterval`) → RPO ≈ 6h worst case. Restore is a file copy after integrity verification → RTO ≈ seconds to low minutes depending on DB size. Retention: last 14 backups kept (`MaxRetainedBackups`), rotated oldest-first. Revisit both once real write volume is known; R-PER7 (Phase 3) will tune retention further.
+- Backup uses `VACUUM INTO` (atomic, produces a compacted standalone file) + `PRAGMA integrity_check` verification before trusting a backup or restoring from one. Restore never falls back to an empty DB — `RestoreLatestVerifiedAsync` throws `InvalidOperationException` if no backup passes verification, by design (see R-FIX11 dependency on repair-lineage history survival).
+- Gotcha for later phases touching SQLite files directly: `SqliteConnection` pools connections even after `CloseAsync()`, keeping the file handle open. Any code that needs exclusive file access after closing (restore, corruption simulation, etc.) must call `SqliteConnection.ClearPool(connection)` first.
+- `Secret.EncryptedValue`/`EncryptionKeyId` are schema-only placeholders in Phase 1 — actual encryption-at-rest with an external key store, handle tokenization, and revocation semantics land in Phase 2 (R-SEC1, R-SEC8, R-SEC9). Don't assume the current bytes are meaningfully encrypted yet.
+- Test project `Tests/Host.Persistence.Tests` uses real file-backed SQLite DBs (temp dir per test, cleaned up in `DisposeAsync`) rather than `:memory:`, since WAL mode and `VACUUM INTO` both need a real file to test meaningfully.
 
 ---
 
