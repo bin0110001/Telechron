@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/Agent/">
+    <Project Path="Agent/Telechron.Agent.csproj" />
+  </Folder>
+  <Folder Name="/Host/">
+    <Project Path="Host/Telechron.Host.csproj" />
+  </Folder>
+  <Folder Name="/Modules/" />
+  <Folder Name="/Modules/Sample/">
+    <Project Path="Modules/Sample/Telechron.Modules.Sample.csproj" />
+  </Folder>
+  <Folder Name="/Sdk/">
+    <Project Path="Sdk/Telechron.Sdk.csproj" />
+  </Folder>
+  <Folder Name="/Tests/" />
+  <Folder Name="/Tests/Sdk.Tests/">
+    <Project Path="Tests/Sdk.Tests/Telechron.Sdk.Tests.csproj" />
+  </Folder>
+</Solution>

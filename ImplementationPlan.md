@@ -1,0 +1,287 @@
+# Telechron — Implementation Plan & Checklist
+
+> Companion to `TechDesign.md`. This is the build order. Every requirement ID (e.g. `R-SYS1`)
+> refers to that document — the design is the source of truth; this file is the sequence.
+>
+> **How to use this (for the implementing model):**
+> - Work top to bottom. A phase's exit criteria must pass before the next phase starts.
+> - Each task lists the **requirement IDs** it satisfies, the **files/areas** it touches, and a
+>   **done-when** check. Read the referenced requirement in `TechDesign.md` before implementing — do
+>   not work from the summary line alone.
+> - Every feature obeys the §9 definition-of-done: persists, self-tests, is repairable, container-safe,
+>   has a UI surface, emits provenance/audit records, enforces permissions Host-side. Don't mark a task
+>   done if it skips one of these where applicable.
+> - The `~800 line` file cap (R-ENG1) applies to everything you write. Split proactively.
+> - Windows + PowerShell is the dev host (R-ENG5). Prefer cross-platform paths and shell-agnostic scripts.
+> - When unsure whether a security/permission behavior applies, assume it does and gate it.
+
+**Legend:** `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 security-critical (do not shortcut) · 🧱 load-bearing seam (many things depend on it)
+
+---
+
+## Phase 0 — Repository & Toolchain Foundation
+
+Goal: a building, testable solution skeleton with CI, before any domain code.
+
+- [x] 🧱 Create solution layout: `Host/`, `Agent/`, `Sdk/` (shared contracts), `Modules/` (sample + real modules), `Frontend/`, `Tests/`. Modules are **never** compile-time referenced by Host (R-NS1, R-SYS4).
+  - **Done when:** `dotnet build` succeeds on an empty solution; Host has zero project reference to anything under `Modules/`.
+- [x] Set up `Sdk/` project holding **only** shared contracts/interfaces (module contracts, function contracts, DTOs). No leaf logic here (R-ENG3).
+  - **Done when:** Sdk compiles standalone and is referenced by Host, Agent, and sample module.
+- [x] Establish test project(s) and a single `dotnet test` entrypoint. Every subsequent feature ships tests here or in its module (R-ENG6).
+- [x] Add CI/lint scaffolding: build + test + a file-length lint that emits a warning (not a hard fail) at ~800 lines (R-ENG1). Wire it as a plain check for now; the "emits a Finding" behavior comes in Phase 6.
+  - **Done when:** CI runs build+test+lint on push; oversized file produces a visible warning.
+- [x] Decide and document the container runtime (Docker/Podman) and pin base image digests (R-SYS9). Record chosen registry allowlist.
+  - **Done when:** a `containers/` dir holds digest-pinned base + one toolchain image definition, version-controlled.
+
+**Exit criteria:** solution builds, tests run, CI green, container runtime chosen and images pinned. ✅ MET — see commit for Phase 0.
+
+**Notes for next phases:**
+- Solution file is `Telechron.slnx` (SDK 10.0.300 defaults to the new XML slnx format, not `.sln`).
+- Chose **net10.0** as TFM (user decision) and **Podman** as container runtime (user decision — daemonless/rootless fits R-SYS7's isolation posture).
+- Host webapi template pulled a vulnerable transitive `Microsoft.OpenApi` 2.0.0 (CVE-2026-49451); pinned explicitly to `2.7.5` (patched, same major — 3.x breaks `Microsoft.AspNetCore.OpenApi`'s source generator).
+- `Frontend/` dir created but empty — real scaffolding starts in Phase 10 (built incrementally alongside backend phases per that phase's goal).
+- Sdk currently holds only a marker type (`Telechron.Sdk.AssemblyInfo`); real contracts arrive in Phase 1/2 as entities are designed.
+
+---
+
+## Phase 1 — Persistence Core & Security-Prerequisite Entities 🧱
+
+Goal: the minimum durable core the security floor needs — the DB, the repository/mapping seam, and **only** the entities security depends on (`User`, `Secret`, `Project`). The remaining ~14 domain entities are deferred to Phase 3, *after* the security seams exist, so security is never retrofitted onto them.
+
+- [ ] 🧱 Set up SQLite + EF Core with **WAL mode** and `busy_timeout`/backoff on `SQLITE_BUSY` from day one (R-PER1, R-PER6). Do not defer WAL — retrofitting write-contention handling is painful.
+  - **Done when:** DB opens in WAL; a concurrent-write test shows retry/backoff rather than a hard failure.
+- [ ] 🧱 Establish the **repository interface** layer and the **domain-model ↔ DB-entity separation** (R-PER3, R-PER4). Domain models are POCOs; DB entities are separate; a mapping layer bridges them.
+  - **Done when:** one entity round-trips through a repository with domain and DB types distinct.
+- [ ] Implement **only the security-prerequisite entities** (migration + repository + round-trip test each):
+  - [ ] `User` + Role (Viewer/Operator/Admin) + notification target + project membership (R-DM15). Needed by API auth/RBAC and audit attribution.
+  - [ ] `Secret` (R-DM12) — encrypted value column; referenced only by handle. Needed by the secret seams.
+  - [ ] `Project` (R-DM1) — incl. Repair Policy (`FullyAutonomous` / `RequireApproval`) and owner (User FK). Projects are the unit of trust/scope (R-DM1), so RBAC and secret scoping need it. *(Its FKs to later entities — Runs, Workflows, etc. — are added when those land in Phase 3.)*
+- [ ] Implement **corruption guard + backup/restore** (R-REL2, R-REL5): scheduled `VACUUM INTO` to a rotating retention set; corruption recovery restores from latest verified backup (never silently empties). Document RPO/RTO. *(Do it now: it protects the audit log and secrets store from the moment they exist.)*
+  - **Done when:** a scheduled backup produces a restorable file; a simulated corruption restores rather than resets.
+
+**Exit criteria:** DB in WAL with backoff; `User`/`Secret`/`Project` persist and round-trip through repositories with domain/DB separation; backup/restore proven.
+
+---
+
+## Phase 2 — Security & Identity Seams 🔒🧱
+
+Goal: the non-negotiable security floor, wired **before** the rest of the domain model and long before any code-generation or agentic feature. Retrofitting these is the failure mode we're avoiding. Everything from Phase 3 onward routes through the seams built here.
+
+- [ ] 🔒 **Secret encryption at rest with external key management** (R-SEC1, R-SEC9): encryption key comes from a platform key store / HSM / externally-supplied master key — **never** stored in the SQLite file or beside it. Support key rotation independent of secret rotation.
+  - **Done when:** secrets encrypt/decrypt; the DB file alone (without the external key) cannot decrypt them; a key-rotation path exists.
+- [ ] 🔒 **Secret handle tokenization** (R-SEC1): Personas/prompts only ever see opaque handles. Host resolves handle→value at execution time, outside any LLM context.
+  - **Done when:** no code path places a raw secret into a prompt; a test asserts prompts contain only handles.
+- [ ] 🔒 **Secret resolution boundary for agentic calls** (R-SEC5): raw secret injected only inside the Host/Connector runtime at the final hop; tool results returned to an LLM are scrubbed/re-tokenized before re-entering context.
+  - **Done when:** a simulated agentic connector call authenticates without the secret ever appearing in tool-call args or returned tool output.
+- [ ] 🔒 **Secret lifecycle** (R-SEC8): rotation + immediate revocation; revocation invalidates outstanding handles and fails in-flight calls using the old value.
+- [ ] 🔒 **Human-facing API auth + RBAC** (R-SEC6): authenticated User sessions; per-Project RBAC (Viewer/Operator-Approver/Admin); rate limiting on mutating endpoints; input validation; CORS restricted to configured origins. Wire against the `User`/`Project` entities from Phase 1.
+  - **Done when:** an unauthenticated request to a mutating endpoint is rejected; a Viewer cannot approve; CORS blocks a non-allowlisted origin.
+- [ ] 🔒 **Tamper-evident security audit log** (R-SEC7): append-only, hash-chained; stored **separately** from operational telemetry and outside the mutable R-PER1 path. Log: secret access, approval decisions (with approver identity), module installs, capability grants, auto-committed repairs. *(Build the store + hash-chain now; later phases just emit into it.)*
+  - **Done when:** an audit entry cannot be edited/deleted through the normal DB path; the hash chain detects tampering.
+- [ ] 🔒🧱 **Host-side permission mediation primitive** (R-MOD8a): a single non-bypassable authorization check at dispatch time for all Persona tool/connector/workflow/secret access and all module capability use. LLM self-restraint is never the enforcement. This is the seam every later capability calls — build it as a general primitive even though its callers (Personas, modules) don't exist yet.
+  - **Done when:** the primitive rejects an access request against a supplied allowlist; a placeholder caller test proves deny-by-default; a test proves it cannot be bypassed by prompt content.
+- [ ] 🔒 **Secret redaction from operational logs** (R-SEC1).
+
+**Exit criteria:** secrets safe at rest with external keys; handles never leak to prompts; human API authenticated + RBAC-gated; audit log tamper-evident; permission mediation is a callable Host primitive everything else will route through.
+
+---
+
+## Phase 3 — Remaining Domain Model 🧱
+
+Goal: the rest of the persisted entities, built on the secured core. Each is created with its security seams already available (RBAC scoping, audit hooks, permission mediation), so none needs a retrofit.
+
+- [ ] Implement remaining domain entities as persisted aggregates. **One entity per task-ish; group trivial ones.** Each needs migration + repository + round-trip test, and wires its Project FKs back to Phase 1's `Project`:
+  - [ ] `Run` + full lifecycle states (R-DM2): Pending/Running/Passed/Failed/Cancelled/TimedOut/Stalled.
+  - [ ] `Finding` (R-DM3) — incl. **Failure Class (Environment vs Code)** field (R-FIX8) and **Provenance** back-refs (R-DM3a).
+  - [ ] `RepairAttempt` (R-DM3a) — many-to-many to Findings; snapshot ref, patch, verify result, approver, resulting artifact/commit + provenance ref.
+  - [ ] `Function` (R-DM4) — incl. deprecation flag (R-DM7a).
+  - [ ] `Workflow` + `WorkflowRun` — **WorkflowRun lifecycle** (Pending/Running/AwaitingApproval/PartiallyFailed/Passed/Failed/Cancelled/TimedOut) and **definition pinning** snapshot (R-DM5, R-WF4).
+  - [ ] `Persona` (R-DM6) — allowed tools/connectors/workflows, max iterations, max cost, approval policies, allowed secrets (by handle). Its allowlists feed the Phase 2 mediation primitive.
+  - [ ] `Module` (R-DM7) + version fields, semver (R-DM7a).
+  - [ ] `Machine` + `Resource` (R-DM8) — incl. mutually-exclusive resource groups.
+  - [ ] `IntentPlan` (R-DM9) — side-effect-free proposal.
+  - [ ] `LlmConnection` (R-DM10).
+  - [ ] `Connector` (R-DM11) — incl. deprecation flag (R-DM7a); reusable across projects.
+  - [ ] `Artifact` (R-DM13) — **metadata/reference only in DB; binary payload lives outside SQLite** (R-PER7).
+  - [ ] `Toolchain` (R-DM14).
+- [ ] Implement **binary Artifact blob storage** outside SQLite (filesystem or blob store), DB holds references only (R-PER7).
+  - **Done when:** storing a large artifact does not grow the SQLite file; only metadata is in the DB.
+- [ ] Implement **retention policy** scaffolding for Runs/Findings/logs/LLM records with archival-before-delete; exempt repair-lineage data (R-PER7).
+  - **Done when:** a retention pass archives+prunes old rows but leaves repair-lineage intact.
+
+**Exit criteria:** all remaining entities persist and round-trip; artifacts stored out-of-DB; retention pass works; every entity's access is already RBAC-scopable and audit-hookable.
+
+---
+
+## Phase 4 — Agent, Transport & Container Execution 🔒🧱
+
+Goal: authenticated workers that run untrusted code inside a hardened container boundary.
+
+- [ ] 🔒🧱 **Agent registration + auth** (R-SEC2, R-SCH3): mTLS or signed tokens; registration requires authentication + dedup.
+  - **Done when:** an unauthenticated agent is rejected; a duplicate registration is deduped.
+- [ ] 🔒 **Command dispatch schema validation + parameter escaping** (R-SEC2) to prevent injection into agent commands.
+  - **Done when:** a malformed/injection-crafted command is rejected by schema validation before execution.
+- [ ] 🔒🧱 **Container execution boundary** (R-SYS6): all synthesized/module/untrusted code, self-tests, repair verification, and workflow execution run in containers. ALC/process-wrapping is lifecycle-only, not security.
+- [ ] 🔒 **Untrusted container resource + network policy** (R-SYS7): CPU/memory/disk quotas; default-deny egress (allowlist per declared need); containers cannot reach the Host management plane or sibling Agents.
+  - **Done when:** a container hits a memory cap and is killed; an un-allowlisted egress attempt is blocked; the container cannot reach the Host API.
+- [ ] 🔒 **Container image provenance** (R-SYS9): images pinned by digest, from allowlisted registry, CVE-rescanned; build defs version-controlled.
+- [ ] 🔒 **GPU access isolation** (R-SYS8): GPU-requesting untrusted containers only on dedicated single-tenant GPU agents; GPU memory cleared between tenants; GPU access follows the R-MOD8 approval path.
+- [ ] **Warm container pools + layer caching** (R-SYS10): pools keyed by (Toolchain, dependency fingerprint); layer cache with invalidate-on-change TTL. *(Can start naive/cold and optimize; do not weaken R-SYS6/R-SYS7 for speed.)*
+  - **Done when:** repeat verify of the same toolchain reuses a warm container and is measurably faster.
+- [ ] **Heartbeats + stalled-run watchdog** (R-RUN3, R-REL1) with a **grace/reconnect window** before marking Stalled; resume-on-reconnect (R-SCH5).
+
+**Exit criteria:** an authenticated agent runs a trivial workload inside a resource-limited, network-restricted, digest-pinned container; disconnect→reconnect resumes within the grace window.
+
+---
+
+## Phase 5 — Module Runtime & Hot Reload 🧱
+
+Goal: the plugin system the whole "modularize everything" north-star rests on.
+
+- [ ] 🧱 **Module runtime + loader** via isolated `AssemblyLoadContext` (R-SYS4, R-MOD7). Host accesses modules only through the runtime, never as compile-time deps.
+- [ ] **Unified self-test contract** (R-MOD4) + **self-test falsifiability** (R-MOD4a): Verify confirms the self-test *fails* on the pre-patch snapshot before accepting a post-patch pass (negative control required).
+  - **Done when:** a module whose self-test trivially passes on broken code is rejected by Verify.
+- [ ] 🔒 **Module supply-chain integrity** (R-MOD5a): signature + checksum verified before install; refuse on mismatch. Self-tests are functional evidence only, never a security attestation.
+- [ ] 🔒 **Pre-trust module sandboxing** (R-MOD5b): new/updated modules first run maximally restricted (network+capability denied beyond self-test) with observed behavior compared to declared R-MOD8 capabilities before capabilities take effect.
+- [ ] **Capability permissions** (R-MOD8): modules declare required capabilities; Projects approve them; enforced via the Phase 2 mediation primitive (R-MOD8a).
+- [ ] 🧱 **Two-phase drain + canary + ALC-leak guard** (R-MOD6, R-MOD6a): phase 1 stop new dispatch while in-flight completes/times out; phase 2 unload only at zero refs; post-reload canary window with auto-rollback on elevated errors; track ALC unload success and alert on retained-reference leaks.
+  - **Done when:** a hot-reload with in-flight work drains cleanly; a broken new version auto-rolls-back; repeated reload cycles show no unload leak.
+- [ ] **Module health monitoring** (R-MOD1) and **module versioning/compatibility** (R-DM7a): semver; same-major rebinds transparently; differing major requires re-approval; typed-artifact contracts stable within a major.
+- [ ] Ship a **sample end-to-end module** (source + self-test + permissions) proving the whole contract.
+
+**Exit criteria:** a signed, sandboxed sample module installs, runs its (falsifiable) self-test in a container, hot-reloads with drain, and rolls back when broken — all mediated by Host-side permissions.
+
+---
+
+## Phase 6 — Provider Modules: Runners, Toolchains, Functions, Connectors, LLM
+
+Goal: the first real capabilities, each as a module (R-MOD2). These are largely parallelizable once Phase 5 holds.
+
+- [ ] **Test runner module(s)** (R-RUN1, R-RUN2, R-RUN5): pluggable runners executing in containers against a Toolchain; warnings/info are not failures (R-RUN4).
+- [ ] **Toolchain modules** (R-DM14, R-RUN5): build/test/verify/export/deploy commands + env requirements. Start with one (e.g. .NET) end-to-end, then add others (Godot, Node, Python…) as clones.
+- [ ] **Function executor modules** (R-DM4, R-WF1, R-WF2): Run/Build/Git/Zip/Upload/Convert/Deploy etc. Hot-reloadable.
+- [ ] **Connector modules** (R-DM11, R-MOD9): declare auth mechanisms, required secrets, supported artifact types + operations. Start with 1–2 (e.g. GitHub, filesystem/SSH) exercising the R-SEC5 secret boundary.
+- [ ] **LLM provider registry + engine modules** (R-LLM1, R-LLM2): providers resolved through a registry; connection owns settings.
+- [ ] 🔒 **LLM call tracking** (R-LLM3): every call records provider/model/tokens/cost/prompt metadata and surfaces in UI.
+- [ ] 🔒 **Global + per-project LLM spend caps** (R-LLM4): rolling-window circuit breaker independent of per-repair/per-persona caps.
+- [ ] 🔒 **Untrusted content isolation in prompts** (R-LLM5): Finding/connector free-text wrapped as inert data; reduced-permission profile when a Persona processes untrusted content.
+  - **Done when:** a Finding containing injected instructions does not cause the repair Persona to act on them; a test proves the reduced-permission profile is applied.
+
+**Exit criteria:** a container-run test suite against a real Toolchain produces results; a Connector authenticates via the secret boundary; an LLM call is tracked, capped, and processes untrusted content safely.
+
+---
+
+## Phase 7 — Findings & The Single Repair Pipeline 🔒🧱
+
+Goal: the one generic repair loop (R-NS2). **No bespoke fix/verify/revert paths anywhere** (R-ENG4).
+
+- [ ] 🧱 **Findings generation** from Runs and workflow failures (R-FIX1); the file-length lint from Phase 0 now emits a code-quality Finding on violation (R-ENG1).
+- [ ] 🔒 **Environment vs Code classification** (R-FIX8): only Code-classified Findings become repair candidates; Environment (Stalled/TimedOut/network blips) route to retry/quarantine. Same mechanism as R-BUILD4 (do not duplicate).
+- [ ] 🧱 **The generic pipeline** (R-NS2, R-FIX2): Snapshot → Generate Fix → Apply → Verify (in container) → Approval Gate (if required) → Revert on failure → Commit/Hot-Reload on success.
+- [ ] **Deterministic-before-LLM** ordering (R-FIX5); deterministic fixes may use the R-SYS10 fast-path.
+- [ ] **Repair routing by Finding origin** (R-FIX4) and **atomic multi-file patch transactions** (R-FIX7).
+- [ ] **Bounds & governance** (R-FIX3): attempt caps, per-repair cost caps, decline short-circuiting, cross-run dedup; Project Repair Policy gate (RequireApproval pauses verified patches).
+- [ ] **Bounded rescanning** (R-FIX6): rescan only patched files, capped against the same attempt cap.
+- [ ] 🔒 **Repair concurrency & locking** (R-FIX9): exclusive locks per target; repair vs module hot-reload drain mutually exclude on module ID.
+- [ ] 🔒 **Oscillation/regression detection** (R-FIX11): per-file diff-signature history; a fix matching a prior reverted patch short-circuits to RequireApproval.
+- [ ] 🔒 **Repair-triggered synthesis routes through the human gate** (R-FIX10, R-NS3): if a fix needs a *new* capability/module, force R-BUILD5 approval regardless of policy.
+- [ ] 🔒 **Privileged-path change control** (R-SEC4): patches touching permission/Persona/approval/secret/repair-pipeline/trust-policy code force RequireApproval + a distinct privileged-diff review surface — regardless of policy.
+- [ ] 🔒 **Repair diff scope limits** (R-FIX12): oversized or out-of-origin patches require elevated review.
+- [ ] 🔒 **Repair provenance & commit attestation** (R-SEC3): every auto-commit/hot-reload carries a signed, immutable provenance record (source Finding, Persona, model version, verify results), stored independently. Populates the RepairAttempt (R-DM3a).
+- [ ] **Repair Plan batch aggregation** (R-FIX2a): batch scans aggregate related Findings under one Approval Gate; shares provenance + diff-scope rules.
+
+**Exit criteria:** a failing containerized test becomes a Code Finding, flows through the single pipeline, verifies in a container, respects the policy gate, and commits with a signed provenance record — while a privileged-path or synthesis-requiring or oscillating fix is forced to human approval.
+
+---
+
+## Phase 8 — Workflows, Functions & Intent Planning
+
+Goal: composition and the natural-language front door.
+
+- [ ] **Workflow engine** (R-WF1): function-driven; linear + graph execution; variables; typed artifacts (R-DM5, R-WF6).
+- [ ] **Typed artifact passing** (R-WF6): steps declare input/output artifact types.
+- [ ] **Approval gates** (R-WF5): automatic / manual approval / manual edits / multi-stage; execution pauses (AwaitingApproval state) until satisfied. Approver identity recorded (R-DM15, R-SEC7).
+- [ ] **Failure policies** (R-WF3) driving WorkflowRun aggregate status (FailFast→Failed, ContinueOnError→PartiallyFailed).
+- [ ] **Durable WorkflowRuns across restart** (R-WF4) with definition-pinning snapshot (Phase 3).
+- [ ] **Intent planning** (R-BUILD1, R-BUILD2, R-DM9): deterministic when a rule/pattern matches, else Persona/LLM fallback; plans are side-effect-free; record which path produced the plan.
+- [ ] 🔒 **Capability gap approval flow** (R-BUILD5, R-BUILD3, R-BUILD4): NL → Intent Plan → Gap Analysis → **Human Approval** → Synthesis (source + self-test + module) → Container Verification → Install → Workflow Gen → Execution. NL never directly synthesizes/installs. Environment vs code failures distinguished during synthesis.
+  - **Done when:** an NL request needing a missing capability cannot install it without passing the human gate; synthesized capability is capped at the requesting Persona's permissions (R-MOD8a).
+- [ ] **Personas as the single editable home** for repair/planning/synthesis/generation logic (R-DM6); enforced by mediation (R-MOD8a) and reduced-permission profiles (R-LLM5).
+
+**Exit criteria:** an NL request produces a side-effect-free plan; approval drives synthesis→verify→install→workflow; a graph workflow with an approval gate runs durably across a restart with correct aggregate status.
+
+---
+
+## Phase 9 — Scheduling, Resources & Reliability
+
+Goal: continuous, fair, observable operation.
+
+- [ ] **Scheduling** (R-SCH1, R-SCH4): runs serialize per machine, workflows per project; scheduled executions are WorkflowRuns; durable and DB-failure-resistant.
+- [ ] **Exclusive resource groups** (R-SCH2, R-DM8): mutually-exclusive resources enforced.
+- [ ] **Priority, starvation prevention, autoscaling hooks, reconnect** (R-SCH5): priority classes with aging; grace/reconnect resume; queue-depth autoscaling hooks.
+- [ ] **Host Sentinel repair loop** (R-REL3) — self-repair of the repair engine is a privileged path → always RequireApproval (R-SEC4).
+- [ ] **Host scaling ceiling + migration path** (R-REL4): publish documented max agents/workflows/write-throughput and the SQLite→networked-RDBMS trigger; agents buffer telemetry across a Host outage; bounded restart-recovery.
+- [ ] 🧱 **Distributed tracing + health/readiness endpoints** (R-REL6): correlation/trace ID propagated Host→Agent→Container→persistence; liveness/readiness endpoints; watchdog + sentinel consume metrics + alerting thresholds.
+- [ ] **High-frequency telemetry batching** (R-PER5) — confirm it bypasses direct SQLite writes.
+
+**Exit criteria:** scheduled workflows run durably; resource exclusivity holds; a traced request is followable end-to-end across all hops; health endpoints report correctly.
+
+---
+
+## Phase 10 — Frontend (Parity) 🧱
+
+Goal: R-SYS3/R-UI1 mandate a UI surface for **every** backend capability. Build incrementally alongside each backend phase where possible; this phase is the completeness sweep.
+
+- [ ] **Feature-first SPA architecture** (R-UI4) with **realtime updates across all active surfaces** (R-UI3), authenticated via Phase 2 sessions/RBAC.
+- [ ] Required surfaces (R-UI2) — each is a task: Runs · Work Queue · Projects · Workflows (with graph editor) · Machines · Resources · Modules · Connectors · Toolchains · LLM Configurations · Assistant · Storefront · Scheduling · Secrets Management.
+- [ ] Security-specific surfaces implied by the new requirements: **privileged-diff review** (R-SEC4/R-FIX12), **approval queue with approver attribution** (R-WF5/R-DM15), **audit-log viewer** (R-SEC7), **LLM cost/spend dashboard** (R-LLM3/R-LLM4), **provenance / "why did this change" view** (R-SEC3/R-DM3a).
+- [ ] Parity audit: enumerate every backend capability and confirm a corresponding surface exists (R-UI1). No capability ships UI-less.
+
+**Exit criteria:** every capability is reachable and controllable from the UI with realtime updates; security review/approval/audit surfaces exist.
+
+---
+
+## Phase 11 — Storefront (Optional) & Hardening
+
+- [ ] **Storefront** (R-SYS5): out-of-process catalog, **disabled by default**, governed by project trust policies; acquisition honors R-MOD5a signing + R-MOD5b pre-trust sandboxing.
+- [ ] Full pass against the **§9 acceptance tests** — treat each bullet as a gate:
+  - [ ] Register agent (auth) → run containerized suite → stream realtime telemetry.
+  - [ ] Failing tests → Findings w/ Repair Context → repair via the one pipeline.
+  - [ ] NL request → deterministic plan → approved synthesis → workflow execution.
+  - [ ] Hot-reload via drain + ALC isolation.
+  - [ ] Scheduled workflows (test/maintenance/deploy/vuln remediation).
+  - [ ] Toolchains-in-containers for real builds (Godot/Unity/.NET).
+  - [ ] Connectors + secret-handle tokenization for external calls.
+  - [ ] Typed artifacts passed between steps.
+  - [ ] Module capability permissions + sandbox restrictions enforced.
+  - [ ] Every capability surfaced in the frontend.
+- [ ] **Definition-of-done sweep** (§9): for each shipped feature confirm it persists, self-tests, is repairable, container-safe, has UI, emits provenance/audit, enforces permissions Host-side, distinguishes env-vs-code failures, and uses the single repair pipeline where applicable.
+
+**Exit criteria:** all §9 acceptance tests pass on a fresh install; the definition-of-done sweep is clean.
+
+---
+
+## Cross-Cutting Rules (apply in every phase)
+
+- **One repair pipeline only** (R-NS2, R-ENG4) — never write a second fix/verify/revert path.
+- **Modularize leaf capabilities** (R-NS1, R-ENG2); **shared logic in the SDK** (R-ENG3).
+- **~800-line file cap** (R-ENG1); split proactively.
+- **Windows/shell hygiene** (R-ENG5).
+- **Every feature ships tests** (R-ENG6) and its **UI surface** (R-UI1).
+- **Security defaults to on:** if unsure whether to gate/audit/mediate, do it.
+- **Persist anything that survives restart** (R-PER2).
+
+---
+
+## Suggested Build Order Rationale (for the implementer)
+
+1. **0** is the bare solution/CI scaffold — nothing exists without it.
+2. **1** is deliberately *lean*: only the DB, the repository seam, and the three entities security cannot function without (`User`, `Secret`, `Project`) plus backup/restore. It is not "all persistence" — that's Phase 3.
+3. **2 (security) comes immediately after**, as early as it can possibly go given real dependencies (it needs a DB and those three entities to exist, nothing more). Secret encryption/tokenization, human API auth+RBAC, the tamper-evident audit log, and the Host-side permission-mediation primitive are all built here — **before** the rest of the domain model, before agents, before modules, before any LLM or code-execution feature. Every later phase calls into these seams instead of bolting security on afterward. This is the retrofit we are explicitly avoiding.
+4. **3** fills in the remaining ~14 domain entities now that they can be built RBAC-scoped and audit-hookable from day one.
+5. **4–5 (agent/containers/modules)** are the execution + plugin substrate the north-star depends on, and lean on Phase 2's permission mediation and container/GPU/image-provenance rules immediately.
+6. **6 (provider modules)** are the first real capabilities and are parallelizable; Connectors exercise the Phase 2 secret-resolution boundary directly.
+7. **7 (repair pipeline)** is the heart; it needs everything above it, including the privileged-path routing and provenance seams from Phase 2.
+8. **8–9 (workflows/planning/scheduling/reliability)** compose and operationalize.
+9. **10 (frontend)** is parity — build surfaces alongside their backends, sweep here. Every surface is auth-gated from Phase 2 by construction.
+10. **11 (storefront/hardening)** is optional + the final acceptance gate.
