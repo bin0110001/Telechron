@@ -4,7 +4,7 @@ namespace Telechron.Sdk.Domain;
 // Personas/prompts never see raw values (R-SEC1, wired in Phase 2). EncryptedValue
 // and EncryptionKeyId are opaque to the domain layer; Phase 2 adds the external
 // key-management resolution behind IsRevoked/rotation (R-SEC8, R-SEC9).
-public sealed class Secret
+public sealed record Secret
 {
     public required Guid Id { get; init; }
     public required Guid ProjectId { get; init; }

@@ -32,6 +32,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ISecretRepository, SecretRepository>();
         services.AddScoped<IProjectRepository, ProjectRepository>();
+        services.AddScoped<IProjectMembershipRepository, ProjectMembershipRepository>();
 
         services.Configure<DatabaseBackupOptions>(o => o.BackupDirectory = backupDirectory);
         services.AddScoped<IDatabaseBackupService, SqliteDatabaseBackupService>();
