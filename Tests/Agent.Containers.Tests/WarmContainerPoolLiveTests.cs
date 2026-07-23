@@ -13,6 +13,7 @@ namespace Telechron.Agent.Containers.Tests;
 // directory reuses the prior container instead of creating a new one, and
 // is measurably faster than the first (cold) execution. Skips rather than
 // fails if Podman isn't reachable.
+[Trait("Category", "Live")]
 public class WarmContainerPoolLiveTests : IAsyncLifetime
 {
     private const string AspnetImageDigest =

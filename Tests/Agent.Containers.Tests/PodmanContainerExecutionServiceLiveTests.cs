@@ -12,6 +12,7 @@ namespace Telechron.Agent.Containers.Tests;
 // compiles against Docker.DotNet's types. Requires a running
 // `podman-machine-default` reachable at the default named-pipe endpoint;
 // skips (rather than fails) if Podman isn't available in the environment.
+[Trait("Category", "Live")]
 public class PodmanContainerExecutionServiceLiveTests : IAsyncLifetime
 {
     private const string AspnetImageDigest =

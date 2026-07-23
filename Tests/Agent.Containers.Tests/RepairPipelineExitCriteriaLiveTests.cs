@@ -32,6 +32,7 @@ namespace Telechron.Agent.Containers.Tests;
 // the real Ollama path works; what THIS test proves is new to Phase 7:
 // the real container Verify + real git apply/revert/commit + real
 // governance/gates wired together as one pipeline.
+[Trait("Category", "Live")]
 public sealed class RepairPipelineExitCriteriaLiveTests : IAsyncLifetime
 {
     private IDockerClient _dockerClient = null!;

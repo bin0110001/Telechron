@@ -15,6 +15,7 @@ namespace Telechron.Agent.Containers.Tests;
 // REAL DotnetTestRunnerModule's output parser -- a genuine end-to-end
 // chain through every piece Phase 6 built for R-RUN1/2/5, not separately
 // mocked stages. Skips if Podman isn't reachable.
+[Trait("Category", "Live")]
 public class ToolchainContainerRunLiveTests : IAsyncLifetime
 {
     private IDockerClient _dockerClient = null!;
