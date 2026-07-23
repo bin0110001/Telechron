@@ -50,6 +50,9 @@ public sealed class ModuleRuntime(ILogger<ModuleRuntime> logger) : IModuleRuntim
     public LoadedModule? GetLoaded(string moduleName) =>
         _loaded.TryGetValue(moduleName, out var loaded) ? loaded : null;
 
+    public TModule? GetLoadedAs<TModule>(string moduleName) where TModule : class, IModule =>
+        _loaded.TryGetValue(moduleName, out var loaded) ? loaded.Instance as TModule : null;
+
     public async Task<ModuleUnloadResult> UnloadAsync(string moduleName, CancellationToken ct = default)
     {
         if (!_loaded.TryRemove(moduleName, out var loaded))

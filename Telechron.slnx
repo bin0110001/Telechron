@@ -6,6 +6,12 @@
     <Project Path="Host/Telechron.Host.csproj" />
   </Folder>
   <Folder Name="/Modules/" />
+  <Folder Name="/Modules/DotnetTestRunner/">
+    <Project Path="Modules/DotnetTestRunner/Telechron.Modules.DotnetTestRunner.csproj" />
+  </Folder>
+  <Folder Name="/Modules/DotnetToolchain/">
+    <Project Path="Modules/DotnetToolchain/Telechron.Modules.DotnetToolchain.csproj" />
+  </Folder>
   <Folder Name="/Modules/Sample/">
     <Project Path="Modules/Sample/Telechron.Modules.Sample.csproj" />
   </Folder>
