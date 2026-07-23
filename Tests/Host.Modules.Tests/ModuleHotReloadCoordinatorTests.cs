@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Telechron.Host.Modules.Health;
 using Telechron.Host.Modules.Runtime;
 
 namespace Telechron.Host.Modules.Tests;
@@ -28,7 +29,8 @@ public class ModuleHotReloadCoordinatorTests
                 MinimumInvocationsBeforeEvaluating = minInvocations,
                 MaxFailureRate = maxFailureRate,
             }), NullLogger<ModuleCanaryObserver>.Instance);
-        var coordinator = new ModuleHotReloadCoordinator(drain, runtime, canary, NullLogger<ModuleHotReloadCoordinator>.Instance);
+        var healthMonitor = new ModuleHealthMonitor(Options.Create(new ModuleHealthMonitorOptions()));
+        var coordinator = new ModuleHotReloadCoordinator(drain, runtime, canary, healthMonitor, NullLogger<ModuleHotReloadCoordinator>.Instance);
         return new Harness(coordinator, tracker, runtime, canary);
     }
 

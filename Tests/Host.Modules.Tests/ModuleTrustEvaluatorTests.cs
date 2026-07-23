@@ -167,4 +167,56 @@ public class ModuleTrustEvaluatorTests
 
         Assert.True(result.IsTrusted);
     }
+
+    [Fact]
+    public async Task EvaluateAsync_MajorVersionBumpWithoutReapproval_IsRejectedBeforeIntegrityCheck()
+    {
+        var integrityVerifier = new StubIntegrityVerifier(isValid: true);
+        var evaluator = new ModuleTrustEvaluator(
+            integrityVerifier,
+            new StubSelfTestRunner(passes: true),
+            new StubFalsifiabilityChecker(isFalsifiable: true),
+            NullLogger<ModuleTrustEvaluator>.Instance);
+
+        var result = await evaluator.EvaluateAsync(
+            Guid.NewGuid(), "mod", Guid.NewGuid(), "img@sha256:" + new string('a', 64), DummyAssemblyPath(),
+            ValidManifest, declaredCapabilities: [], approvedCapabilities: [], priorInstalledAssemblyPath: null,
+            versionTransition: (new ModuleVersion(1, 0, 0), new ModuleVersion(2, 0, 0)), versionReapproved: false);
+
+        Assert.Equal(ModuleTrustOutcome.MajorVersionRequiresReapproval, result.Outcome);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_MajorVersionBumpWithReapproval_ProceedsToOtherChecks()
+    {
+        var evaluator = new ModuleTrustEvaluator(
+            new StubIntegrityVerifier(isValid: true),
+            new StubSelfTestRunner(passes: true),
+            new StubFalsifiabilityChecker(isFalsifiable: true),
+            NullLogger<ModuleTrustEvaluator>.Instance);
+
+        var result = await evaluator.EvaluateAsync(
+            Guid.NewGuid(), "mod", Guid.NewGuid(), "img@sha256:" + new string('a', 64), DummyAssemblyPath(),
+            ValidManifest, declaredCapabilities: [], approvedCapabilities: [], priorInstalledAssemblyPath: null,
+            versionTransition: (new ModuleVersion(1, 0, 0), new ModuleVersion(2, 0, 0)), versionReapproved: true);
+
+        Assert.True(result.IsTrusted);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_SameMajorVersionBump_ProceedsWithoutReapproval()
+    {
+        var evaluator = new ModuleTrustEvaluator(
+            new StubIntegrityVerifier(isValid: true),
+            new StubSelfTestRunner(passes: true),
+            new StubFalsifiabilityChecker(isFalsifiable: true),
+            NullLogger<ModuleTrustEvaluator>.Instance);
+
+        var result = await evaluator.EvaluateAsync(
+            Guid.NewGuid(), "mod", Guid.NewGuid(), "img@sha256:" + new string('a', 64), DummyAssemblyPath(),
+            ValidManifest, declaredCapabilities: [], approvedCapabilities: [], priorInstalledAssemblyPath: null,
+            versionTransition: (new ModuleVersion(1, 0, 0), new ModuleVersion(1, 5, 0)), versionReapproved: false);
+
+        Assert.True(result.IsTrusted);
+    }
 }

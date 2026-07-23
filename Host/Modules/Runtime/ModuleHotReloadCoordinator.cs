@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Telechron.Host.Modules.Health;
 
 namespace Telechron.Host.Modules.Runtime;
 
@@ -6,6 +7,7 @@ public sealed class ModuleHotReloadCoordinator(
     IModuleDrainCoordinator drainCoordinator,
     IModuleRuntime moduleRuntime,
     IModuleCanaryObserver canaryObserver,
+    IModuleHealthMonitor healthMonitor,
     ILogger<ModuleHotReloadCoordinator> logger) : IModuleHotReloadCoordinator
 {
     public async Task<ModuleHotReloadResult> ReloadAsync(
@@ -41,10 +43,18 @@ public sealed class ModuleHotReloadCoordinator(
                 $"New version failed to load: {ex.Message}");
         }
 
+        // R-MOD1: a new version starts its own ongoing health history --
+        // the outgoing version's failure record must not carry over and
+        // immediately mark the freshly-loaded version Degraded.
+        healthMonitor.Reset(moduleName);
+
         // Canary/observation window: a module can pass its self-test yet
         // fail on real inputs (R-MOD6a). RecordInvocationOutcome is called
         // by the real dispatch site as traffic flows to newVersion during
-        // this window (Phase 6 wires the actual invocation path).
+        // this window (Phase 6 wires the actual invocation path) -- both
+        // here and on IModuleHealthMonitor, since the canary window is a
+        // bounded post-reload check while the health monitor's rolling
+        // window covers the module's entire loaded lifetime afterward.
         canaryObserver.StartWindow(moduleName);
         var canaryResult = await canaryObserver.EvaluateAsync(moduleName, ct);
 

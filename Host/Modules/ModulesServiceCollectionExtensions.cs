@@ -1,3 +1,4 @@
+using Telechron.Host.Modules.Health;
 using Telechron.Host.Modules.Integrity;
 using Telechron.Host.Modules.Permissions;
 using Telechron.Host.Modules.Runtime;
@@ -11,10 +12,12 @@ public static class ModulesServiceCollectionExtensions
     public static IServiceCollection AddTelechronModules(
         this IServiceCollection services,
         Action<TrustedPublisherKeyStoreOptions>? configureTrustedKeys = null,
-        Action<ModuleCanaryOptions>? configureCanary = null)
+        Action<ModuleCanaryOptions>? configureCanary = null,
+        Action<ModuleHealthMonitorOptions>? configureHealthMonitor = null)
     {
         services.Configure<TrustedPublisherKeyStoreOptions>(configureTrustedKeys ?? (_ => { }));
         services.Configure<ModuleCanaryOptions>(configureCanary ?? (_ => { }));
+        services.Configure<ModuleHealthMonitorOptions>(configureHealthMonitor ?? (_ => { }));
         services.AddSingleton<TrustedPublisherKeyStore>();
         services.AddSingleton<IModuleIntegrityVerifier, ModuleIntegrityVerifier>();
         services.AddSingleton<IModuleRuntime, ModuleRuntime>();
@@ -26,6 +29,7 @@ public static class ModulesServiceCollectionExtensions
         services.AddSingleton<IModuleDrainCoordinator, ModuleDrainCoordinator>();
         services.AddSingleton<IModuleCanaryObserver, ModuleCanaryObserver>();
         services.AddSingleton<IModuleHotReloadCoordinator, ModuleHotReloadCoordinator>();
+        services.AddSingleton<IModuleHealthMonitor, ModuleHealthMonitor>();
         return services;
     }
 }

@@ -36,5 +36,15 @@ public interface IModuleTrustEvaluator
         // the candidate's code ever runs.
         IReadOnlyList<string> approvedCapabilities,
         string? priorInstalledAssemblyPath,
+        // R-DM7a: null for a first install (no prior version to compare
+        // against, so no version-compatibility question exists yet). For
+        // an update, both the installed and candidate ModuleVersion --
+        // ModuleVersionCompatibility.Classify decides whether this is a
+        // transparent same-major rebind or needs the caller to have
+        // already obtained separate re-approval for the major bump
+        // (versionReapproved asserts that happened; Phase 5 has no
+        // approval-workflow UI of its own to obtain it from).
+        (ModuleVersion Installed, ModuleVersion Candidate)? versionTransition = null,
+        bool versionReapproved = false,
         CancellationToken ct = default);
 }

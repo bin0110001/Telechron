@@ -13,8 +13,23 @@ public sealed class ModuleTrustEvaluator(
     public async Task<ModuleTrustResult> EvaluateAsync(
         Guid projectId, string moduleName, Guid machineId, string toolchainImageDigest, string candidateAssemblyPath,
         ModuleIntegrityManifest integrityManifest, IReadOnlyList<string> declaredCapabilities,
-        IReadOnlyList<string> approvedCapabilities, string? priorInstalledAssemblyPath, CancellationToken ct = default)
+        IReadOnlyList<string> approvedCapabilities, string? priorInstalledAssemblyPath,
+        (ModuleVersion Installed, ModuleVersion Candidate)? versionTransition = null, bool versionReapproved = false,
+        CancellationToken ct = default)
     {
+        // 0. R-DM7a: version compatibility -- cheapest check, no I/O, so
+        // it runs before anything else touches the candidate bytes.
+        if (versionTransition is { } transition)
+        {
+            var compatibility = ModuleVersionCompatibility.Classify(transition.Installed, transition.Candidate);
+            if (compatibility == ModuleVersionCompatibilityOutcome.RequiresReapproval && !versionReapproved)
+            {
+                var reason = $"Major version change ({transition.Installed} -> {transition.Candidate}) requires re-approval before evaluation (R-DM7a).";
+                logger.LogWarning("Module {ModuleName} rejected: {Reason}", moduleName, reason);
+                return new ModuleTrustResult(ModuleTrustOutcome.MajorVersionRequiresReapproval, reason);
+            }
+        }
+
         // 1. R-MOD5a: supply-chain integrity first -- nothing else runs
         // against bytes that failed checksum/signature verification.
         var integrity = await integrityVerifier.VerifyAsync(candidateAssemblyPath, integrityManifest, ct);
