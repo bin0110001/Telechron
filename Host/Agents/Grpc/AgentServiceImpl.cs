@@ -1,5 +1,6 @@
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Telechron.Sdk.Domain;
 using Telechron.Sdk.Grpc;
@@ -16,8 +17,10 @@ public sealed class AgentServiceImpl(
     IMachineRepository machineRepository,
     IAgentSessionRepository sessionRepository,
     IDispatchQueue dispatchQueue,
+    IRunRepository runRepository,
     IAuditLog auditLog,
-    IOptions<AgentEnrollmentOptions> enrollmentOptions) : AgentService.AgentServiceBase
+    IOptions<AgentEnrollmentOptions> enrollmentOptions,
+    ILogger<AgentServiceImpl> logger) : AgentService.AgentServiceBase
 {
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(12);
 
@@ -80,6 +83,32 @@ public sealed class AgentServiceImpl(
         var machine = await machineRepository.GetByIdAsync(machineId, context.CancellationToken)
             ?? throw new RpcException(new Status(StatusCode.NotFound, "Machine not found."));
         await machineRepository.UpdateAsync(machine with { LastHeartbeatUtc = DateTimeOffset.UtcNow, IsOnline = true }, context.CancellationToken);
+
+        // R-RUN3: "Runs emit heartbeats while active." R-SCH5: a Run that had
+        // been marked Stalled resumes to Running on reconnect within the
+        // watchdog's grace window, rather than needing to restart.
+        foreach (var runIdText in request.ActiveRunIds)
+        {
+            if (!Guid.TryParse(runIdText, out var runId))
+                continue;
+
+            var run = await runRepository.GetByIdAsync(runId, context.CancellationToken);
+            if (run is null || run.MachineId != machineId)
+                continue;
+
+            var resumed = run.Status == RunStatus.Stalled;
+            await runRepository.UpdateAsync(
+                run with { LastHeartbeatUtc = DateTimeOffset.UtcNow, Status = resumed ? RunStatus.Running : run.Status },
+                context.CancellationToken);
+
+            if (resumed)
+            {
+                // Operational Run-lifecycle transition, not a security event
+                // (AuditEventKind's taxonomy per R-SEC7 is security-relevant
+                // actions only) -- logged, not audit-logged.
+                logger.LogInformation("Run {RunId} resumed from Stalled on Agent {MachineId} reconnect (R-SCH5).", runId, machineId);
+            }
+        }
 
         return new HeartbeatResponse { Acknowledged = true };
     }

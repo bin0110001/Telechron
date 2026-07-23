@@ -3,7 +3,7 @@ namespace Telechron.Sdk.Domain;
 // Represents test execution (R-DM2). LogsRef points outside SQLite (same
 // out-of-DB pattern as Artifact/Module blobs, R-PER7) rather than storing raw
 // log text. LastHeartbeatUtc backs R-RUN3 ("Runs emit heartbeats while
-// active") and the Phase 9 stalled-run watchdog (R-REL1).
+// active") and the stalled-run watchdog (R-REL1/R-SCH5, Host/Agents/Watchdog).
 public sealed record Run
 {
     public required Guid Id { get; init; }

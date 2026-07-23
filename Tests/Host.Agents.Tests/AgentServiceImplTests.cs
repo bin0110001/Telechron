@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Telechron.Host.Agents.Grpc;
 using Telechron.Host.Agents.Tests.Fixtures;
+using Telechron.Sdk.Domain;
 using Telechron.Sdk.Grpc;
 using Telechron.Sdk.Persistence;
 
@@ -156,5 +157,123 @@ public sealed class AgentServiceImplTests : IAsyncLifetime
             Context()));
 
         Assert.Equal(global::Grpc.Core.StatusCode.Unauthenticated, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task Heartbeat_WithActiveRunId_UpdatesRunLastHeartbeat()
+    {
+        using var scope = _fixture.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<AgentServiceImpl>();
+        var registration = await service.RegisterAgent(new RegisterAgentRequest
+        {
+            EnrollmentToken = AgentServiceTestFixture.EnrollmentToken,
+            MachineName = "run-hb-machine",
+            Hostname = "run-hb-machine.local",
+            MachineFingerprint = "fp-run-heartbeat",
+        }, Context());
+        var machineId = Guid.Parse(registration.MachineId);
+
+        var runs = scope.ServiceProvider.GetRequiredService<IRunRepository>();
+        var run = new Run
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = await scope.SeedProjectAsync(),
+            MachineId = machineId,
+            Status = RunStatus.Running,
+            StartedAtUtc = DateTimeOffset.UtcNow,
+        };
+        await runs.AddAsync(run);
+
+        var response = await service.Heartbeat(new HeartbeatRequest
+        {
+            MachineId = registration.MachineId,
+            SessionToken = registration.SessionToken,
+            ActiveRunIds = { run.Id.ToString() },
+        }, Context());
+
+        Assert.True(response.Acknowledged);
+        var updated = await runs.GetByIdAsync(run.Id);
+        Assert.NotNull(updated!.LastHeartbeatUtc);
+        Assert.Equal(RunStatus.Running, updated.Status);
+    }
+
+    [Fact]
+    public async Task Heartbeat_WithActiveRunIdOnStalledRun_ResumesToRunning()
+    {
+        using var scope = _fixture.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<AgentServiceImpl>();
+        var registration = await service.RegisterAgent(new RegisterAgentRequest
+        {
+            EnrollmentToken = AgentServiceTestFixture.EnrollmentToken,
+            MachineName = "resume-machine",
+            Hostname = "resume-machine.local",
+            MachineFingerprint = "fp-resume",
+        }, Context());
+        var machineId = Guid.Parse(registration.MachineId);
+
+        var runs = scope.ServiceProvider.GetRequiredService<IRunRepository>();
+        var run = new Run
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = await scope.SeedProjectAsync(),
+            MachineId = machineId,
+            Status = RunStatus.Stalled,
+            StartedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+        };
+        await runs.AddAsync(run);
+
+        await service.Heartbeat(new HeartbeatRequest
+        {
+            MachineId = registration.MachineId,
+            SessionToken = registration.SessionToken,
+            ActiveRunIds = { run.Id.ToString() },
+        }, Context());
+
+        var updated = await runs.GetByIdAsync(run.Id);
+        Assert.Equal(RunStatus.Running, updated!.Status);
+    }
+
+    [Fact]
+    public async Task Heartbeat_WithActiveRunIdOwnedByAnotherMachine_IsIgnored()
+    {
+        using var scope = _fixture.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<AgentServiceImpl>();
+        var registrationA = await service.RegisterAgent(new RegisterAgentRequest
+        {
+            EnrollmentToken = AgentServiceTestFixture.EnrollmentToken,
+            MachineName = "owner-machine",
+            Hostname = "owner-machine.local",
+            MachineFingerprint = "fp-owner",
+        }, Context());
+        var registrationB = await service.RegisterAgent(new RegisterAgentRequest
+        {
+            EnrollmentToken = AgentServiceTestFixture.EnrollmentToken,
+            MachineName = "impersonator-machine",
+            Hostname = "impersonator-machine.local",
+            MachineFingerprint = "fp-impersonator",
+        }, Context());
+
+        var runs = scope.ServiceProvider.GetRequiredService<IRunRepository>();
+        var run = new Run
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = await scope.SeedProjectAsync(),
+            MachineId = Guid.Parse(registrationA.MachineId),
+            Status = RunStatus.Stalled,
+            StartedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+        };
+        await runs.AddAsync(run);
+
+        // Machine B claims Machine A's Run in its heartbeat -- must not resume it.
+        await service.Heartbeat(new HeartbeatRequest
+        {
+            MachineId = registrationB.MachineId,
+            SessionToken = registrationB.SessionToken,
+            ActiveRunIds = { run.Id.ToString() },
+        }, Context());
+
+        var unchanged = await runs.GetByIdAsync(run.Id);
+        Assert.Equal(RunStatus.Stalled, unchanged!.Status);
+        Assert.Null(unchanged.LastHeartbeatUtc);
     }
 }

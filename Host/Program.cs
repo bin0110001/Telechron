@@ -97,6 +97,7 @@ if (mtlsEnabled)
 {
     builder.Services.AddTelechronAgentMtls(mtlsOptions);
     builder.Services.AddTelechronAgentGrpc(enrollmentToken);
+    builder.Services.AddTelechronStalledRunWatchdog();
 
     // Kestrel's --urls/ASPNETCORE_URLS binding only applies when no endpoint
     // is configured via ConfigureKestrel — once we add the gRPC/mTLS
