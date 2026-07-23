@@ -44,6 +44,9 @@
   <Folder Name="/Tests/Host.Persistence.Tests/">
     <Project Path="Tests/Host.Persistence.Tests/Telechron.Host.Persistence.Tests.csproj" />
   </Folder>
+  <Folder Name="/Tests/Host.Repair.Tests/">
+    <Project Path="Tests/Host.Repair.Tests/Telechron.Host.Repair.Tests.csproj" />
+  </Folder>
   <Folder Name="/Tests/Host.Security.Tests/">
     <Project Path="Tests/Host.Security.Tests/Telechron.Host.Security.Tests.csproj" />
   </Folder>
