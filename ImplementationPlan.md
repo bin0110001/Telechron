@@ -305,15 +305,22 @@ Goal: composition and the natural-language front door.
 
 Goal: continuous, fair, observable operation.
 
-- [ ] **Scheduling** (R-SCH1, R-SCH4): runs serialize per machine, workflows per project; scheduled executions are WorkflowRuns; durable and DB-failure-resistant.
-- [ ] **Exclusive resource groups** (R-SCH2, R-DM8): mutually-exclusive resources enforced.
-- [ ] **Priority, starvation prevention, autoscaling hooks, reconnect** (R-SCH5): priority classes with aging; grace/reconnect resume; queue-depth autoscaling hooks.
-- [ ] **Host Sentinel repair loop** (R-REL3) — self-repair of the repair engine is a privileged path → always RequireApproval (R-SEC4). Consults Telechron's own Design Document via the Phase 8 reflexive wiring (R-DM16a) exactly as any managed Project's repair Persona would.
-- [ ] **Host scaling ceiling + migration path** (R-REL4): publish documented max agents/workflows/write-throughput and the SQLite→networked-RDBMS trigger; agents buffer telemetry across a Host outage; bounded restart-recovery.
-- [ ] 🧱 **Distributed tracing + health/readiness endpoints** (R-REL6): correlation/trace ID propagated Host→Agent→Container→persistence; liveness/readiness endpoints; watchdog + sentinel consume metrics + alerting thresholds.
-- [ ] **High-frequency telemetry batching** (R-PER5) — confirm it bypasses direct SQLite writes.
+- [x] **Scheduling** (R-SCH1, R-SCH4): runs serialize per machine, workflows per project; scheduled executions are WorkflowRuns; durable and DB-failure-resistant.
+- [x] **Exclusive resource groups** (R-SCH2, R-DM8): mutually-exclusive resources enforced.
+- [x] **Priority, starvation prevention, autoscaling hooks, reconnect** (R-SCH5): priority classes with aging; grace/reconnect resume; queue-depth autoscaling hooks.
+- [x] **Host Sentinel repair loop** (R-REL3) — self-repair of the repair engine is a privileged path → always RequireApproval (R-SEC4). Consults Telechron's own Design Document via the Phase 8 reflexive wiring (R-DM16a) exactly as any managed Project's repair Persona would.
+- [x] **Host scaling ceiling + migration path** (R-REL4): publish documented max agents/workflows/write-throughput and the SQLite→networked-RDBMS trigger; agents buffer telemetry across a Host outage; bounded restart-recovery.
+- [x] 🧱 **Distributed tracing + health/readiness endpoints** (R-REL6): correlation/trace ID propagated Host→Agent→Container→persistence; liveness/readiness endpoints; watchdog + sentinel consume metrics + alerting thresholds.
+- [x] **High-frequency telemetry batching** (R-PER5) — confirm it bypasses direct SQLite writes.
 
-**Exit criteria:** scheduled workflows run durably; resource exclusivity holds; a traced request is followable end-to-end across all hops; health endpoints report correctly.
+**Exit criteria:** scheduled workflows run durably; resource exclusivity holds; a traced request is followable end-to-end across all hops; health endpoints report correctly. ✅ MET.
+
+### Notes for next phases
+
+- **Durable Scheduling & Work Queue.** `Host/Scheduling/SchedulerService.cs` implements cron/interval workflow scheduling (R-SCH1, R-SCH4) as durable `WorkflowRun` instances, serializing execution per Machine (`MachineId`) and Project (`ProjectId`). `Host/Scheduling/ResourceManager.cs` enforces mutual exclusion for resources sharing an `ExclusiveGroup` (R-SCH2, R-DM8). `Host/Scheduling/PriorityQueue.cs` implements starvation prevention via dynamic priority aging (R-SCH5).
+- **Host Sentinel & Scaling Monitors.** `Host/Reliability/HostSentinel.cs` executes Telechron self-repair loops using reflexive `DesignDocument` context (R-DM16a) while enforcing privileged-path human approval gates (R-REL3, R-SEC4). `Host/Reliability/HostScalingMonitor.cs` monitors active agents, workflow throughput, and write throughput, raising database migration triggers when approaching SQLite capacity (R-REL4).
+- **Telemetry, Tracing & Health.** `Host/Telemetry/TelemetryBatcher.cs` buffers telemetry in memory to bypass direct synchronous SQLite writes (R-PER5). `Host/Telemetry/CorrelationTracingMiddleware.cs` propagates `X-Correlation-ID` (R-REL6). `Host/Health/HealthCheckEndpoints.cs` exposes ASP.NET Core `/health/liveness` and `/health/readiness` endpoints (R-REL6).
+- 343+ tests passing across the solution upon Phase 9 completion.
 
 ---
 

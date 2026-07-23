@@ -56,4 +56,10 @@
   <Folder Name="/Tests/Host.Workflows.Tests/">
     <Project Path="Tests/Host.Workflows.Tests/Telechron.Host.Workflows.Tests.csproj" />
   </Folder>
+  <Folder Name="/Tests/Host.Scheduling.Tests/">
+    <Project Path="Tests/Host.Scheduling.Tests/Telechron.Host.Scheduling.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Tests/Host.Reliability.Tests/">
+    <Project Path="Tests/Host.Reliability.Tests/Telechron.Host.Reliability.Tests.csproj" />
+  </Folder>
 </Solution>
