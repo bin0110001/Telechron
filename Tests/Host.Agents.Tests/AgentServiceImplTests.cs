@@ -1,6 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Telechron.Host.Agents.Grpc;
 using Telechron.Host.Agents.Tests.Fixtures;
+using Telechron.Host.Agents.Watchdog;
 using Telechron.Sdk.Domain;
 using Telechron.Sdk.Grpc;
 using Telechron.Sdk.Persistence;
@@ -275,5 +278,70 @@ public sealed class AgentServiceImplTests : IAsyncLifetime
         var unchanged = await runs.GetByIdAsync(run.Id);
         Assert.Equal(RunStatus.Stalled, unchanged!.Status);
         Assert.Null(unchanged.LastHeartbeatUtc);
+    }
+
+    // Phase 4 exit criteria, end to end: "disconnect->reconnect resumes
+    // within the grace window." Exercises both halves of R-SCH5 together --
+    // StalledRunWatchdogPass marking a Run Stalled after a missed heartbeat,
+    // then AgentServiceImpl.Heartbeat resuming it on the next heartbeat --
+    // rather than each in isolation as the other tests in this file and in
+    // StalledRunWatchdogPassTests.cs do.
+    [Fact]
+    public async Task DisconnectThenReconnectWithinGraceWindow_RunResumesRatherThanRestarting()
+    {
+        using var scope = _fixture.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<AgentServiceImpl>();
+        var registration = await service.RegisterAgent(new RegisterAgentRequest
+        {
+            EnrollmentToken = AgentServiceTestFixture.EnrollmentToken,
+            MachineName = "e2e-machine",
+            Hostname = "e2e-machine.local",
+            MachineFingerprint = "fp-e2e-reconnect",
+        }, Context());
+        var machineId = Guid.Parse(registration.MachineId);
+
+        var runs = scope.ServiceProvider.GetRequiredService<IRunRepository>();
+        var run = new Run
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = await scope.SeedProjectAsync(),
+            MachineId = machineId,
+            Status = RunStatus.Running,
+            // Simulates an Agent that connected, ran a while, then stopped
+            // heartbeating (network blip / process restart) well past any
+            // reasonable grace window.
+            StartedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-10),
+            LastHeartbeatUtc = DateTimeOffset.UtcNow.AddMinutes(-8),
+        };
+        await runs.AddAsync(run);
+
+        var watchdog = new StalledRunWatchdogPass(
+            runs, Options.Create(new StalledRunWatchdogOptions { GraceWindow = TimeSpan.FromMinutes(2) }),
+            NullLogger<StalledRunWatchdogPass>.Instance);
+        var stalledCount = await watchdog.ScanAsync();
+        Assert.Equal(1, stalledCount);
+        Assert.Equal(RunStatus.Stalled, (await runs.GetByIdAsync(run.Id))!.Status);
+
+        // The Agent reconnects and heartbeats the same Run within what a
+        // real deployment would configure as the grace window -- this must
+        // resume it, not require the Run to be restarted from scratch.
+        await service.Heartbeat(new HeartbeatRequest
+        {
+            MachineId = registration.MachineId,
+            SessionToken = registration.SessionToken,
+            ActiveRunIds = { run.Id.ToString() },
+        }, Context());
+
+        var resumed = await runs.GetByIdAsync(run.Id);
+        Assert.Equal(RunStatus.Running, resumed!.Status);
+        Assert.NotNull(resumed.LastHeartbeatUtc);
+
+        // A subsequent watchdog scan (using the same grace window as if no
+        // time had passed since the just-sent heartbeat) must NOT re-stall
+        // it -- the resumed Run's heartbeat clock has been reset, not
+        // merely its status flipped back.
+        var secondScanStalledCount = await watchdog.ScanAsync();
+        Assert.Equal(0, secondScanStalledCount);
+        Assert.Equal(RunStatus.Running, (await runs.GetByIdAsync(run.Id))!.Status);
     }
 }
