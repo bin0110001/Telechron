@@ -63,6 +63,7 @@ public static class Phase3Seeding
             Id = Guid.NewGuid(),
             Name = "Test Machine",
             Hostname = "test-machine.local",
+            MachineFingerprint = Guid.NewGuid().ToString("N"),
             RegisteredAtUtc = DateTimeOffset.UtcNow,
             IsOnline = true,
         };

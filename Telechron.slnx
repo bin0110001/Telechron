@@ -13,6 +13,9 @@
     <Project Path="Sdk/Telechron.Sdk.csproj" />
   </Folder>
   <Folder Name="/Tests/" />
+  <Folder Name="/Tests/Host.Agents.Tests/">
+    <Project Path="Tests/Host.Agents.Tests/Telechron.Host.Agents.Tests.csproj" />
+  </Folder>
   <Folder Name="/Tests/Host.Persistence.Tests/">
     <Project Path="Tests/Host.Persistence.Tests/Telechron.Host.Persistence.Tests.csproj" />
   </Folder>

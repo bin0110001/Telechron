@@ -29,6 +29,7 @@ public sealed class TelechronDbContext(DbContextOptions<TelechronDbContext> opti
     public DbSet<DesignDocumentEntity> DesignDocuments => Set<DesignDocumentEntity>();
     public DbSet<RequirementEntity> Requirements => Set<RequirementEntity>();
     public DbSet<RequirementRevisionEntity> RequirementRevisions => Set<RequirementRevisionEntity>();
+    public DbSet<AgentSessionEntity> AgentSessions => Set<AgentSessionEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -92,6 +93,8 @@ public sealed class TelechronDbContext(DbContextOptions<TelechronDbContext> opti
             e.HasKey(m => m.Id);
             e.Property(m => m.Name).IsRequired();
             e.Property(m => m.Hostname).IsRequired();
+            e.Property(m => m.MachineFingerprint).IsRequired();
+            e.HasIndex(m => m.MachineFingerprint).IsUnique();
         });
 
         modelBuilder.Entity<LlmConnectionEntity>(e =>
@@ -303,6 +306,17 @@ public sealed class TelechronDbContext(DbContextOptions<TelechronDbContext> opti
                 .WithMany()
                 .HasForeignKey(r => r.ChangedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AgentSessionEntity>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => s.SessionTokenHash).IsUnique();
+            e.Property(s => s.SessionTokenHash).IsRequired();
+            e.HasOne(s => s.Machine)
+                .WithMany()
+                .HasForeignKey(s => s.MachineId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

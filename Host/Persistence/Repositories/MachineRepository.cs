@@ -16,6 +16,12 @@ public sealed class MachineRepository(TelechronDbContext db) : IMachineRepositor
     public async Task<IReadOnlyList<Machine>> GetOnlineAsync(CancellationToken ct = default) =>
         await db.Machines.AsNoTracking().Where(m => m.IsOnline).Select(m => m.ToDomain()).ToListAsync(ct);
 
+    public async Task<Machine?> GetByFingerprintAsync(string machineFingerprint, CancellationToken ct = default)
+    {
+        var entity = await db.Machines.AsNoTracking().FirstOrDefaultAsync(m => m.MachineFingerprint == machineFingerprint, ct);
+        return entity?.ToDomain();
+    }
+
     public async Task<IReadOnlyList<Machine>> GetAllAsync(CancellationToken ct = default) =>
         await db.Machines.AsNoTracking().Select(m => m.ToDomain()).ToListAsync(ct);
 

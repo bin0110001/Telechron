@@ -6,4 +6,21 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.35.1" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.82.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="JsonSchema.Net" Version="9.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- GrpcServices="Both": Sdk generates client stubs (for Agent) and
+         server base classes (for Host) from the same contract, so there is
+         exactly one compiled definition of the wire protocol. -->
+    <Protobuf Include="Protos\agent.proto" GrpcServices="Both" />
+  </ItemGroup>
+
 </Project>

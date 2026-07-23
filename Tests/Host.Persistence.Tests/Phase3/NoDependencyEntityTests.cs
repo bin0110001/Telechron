@@ -25,6 +25,7 @@ public sealed class NoDependencyEntityTests : IAsyncLifetime
             Id = Guid.NewGuid(),
             Name = "Build Box",
             Hostname = "build-box.local",
+            MachineFingerprint = Guid.NewGuid().ToString("N"),
             RegisteredAtUtc = DateTimeOffset.UtcNow,
             IsOnline = true,
         };

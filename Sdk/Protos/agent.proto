@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+option csharp_namespace = "Telechron.Sdk.Grpc";
+
+package telechron.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+// R-SEC2/R-SCH3: Agent<->Host transport. The Agent is always the gRPC
+// client (it initiates the connection, including the long-lived dispatch
+// subscription) so Agents behind NAT/firewalls never need inbound
+// connectivity — only outbound HTTPS/mTLS to the Host.
+service AgentService {
+  // Registration requires a valid enrollment token (out-of-band provisioned,
+  // R-SEC2 "signed tokens"); the Host authenticates the mTLS client cert
+  // presented for the call and dedups by MachineFingerprint (R-SCH3).
+  rpc RegisterAgent (RegisterAgentRequest) returns (RegisterAgentResponse);
+
+  // Sent periodically while the Agent holds an active session (R-RUN3).
+  rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Long-lived server-streaming subscription — the Host pushes dispatched
+  // commands as they become available. One active subscription per Agent
+  // session; reconnecting within the grace window (R-SCH5) resumes rather
+  // than restarts in-flight work.
+  rpc SubscribeToDispatch (SubscribeToDispatchRequest) returns (stream CommandDispatch);
+
+  // Agent reports the outcome of a previously dispatched command.
+  rpc ReportCommandResult (CommandResultRequest) returns (CommandResultResponse);
+}
+
+message RegisterAgentRequest {
+  string enrollment_token = 1;
+  string machine_name = 2;
+  string hostname = 3;
+  // Stable hardware/OS fingerprint used for deduplication (R-SCH3) — a
+  // re-registration from the same fingerprint updates the existing Machine
+  // row rather than creating a duplicate.
+  string machine_fingerprint = 4;
+  repeated string declared_capabilities = 5;
+}
+
+message RegisterAgentResponse {
+  string machine_id = 1;
+  // Session token the Agent presents on Heartbeat/SubscribeToDispatch calls
+  // for the lifetime of this connection (distinct from the enrollment token,
+  // which is single-use).
+  string session_token = 2;
+}
+
+message HeartbeatRequest {
+  string machine_id = 1;
+  string session_token = 2;
+  google.protobuf.Timestamp sent_at_utc = 3;
+  repeated string active_run_ids = 4;
+}
+
+message HeartbeatResponse {
+  bool acknowledged = 1;
+}
+
+message SubscribeToDispatchRequest {
+  string machine_id = 1;
+  string session_token = 2;
+}
+
+// R-SEC2: CommandKind + ParametersJson are validated against a JSON Schema
+// keyed by kind (see Host CommandDispatchValidator) before this message is
+// ever constructed — the wire message itself carries only validated,
+// escaped data, never raw untrusted input.
+message CommandDispatch {
+  string command_id = 1;
+  string run_id = 2;
+  string command_kind = 3;
+  google.protobuf.Struct parameters = 4;
+  string toolchain_image_digest = 5;
+}
+
+message CommandResultRequest {
+  string machine_id = 1;
+  string session_token = 2;
+  string command_id = 3;
+  bool succeeded = 4;
+  string output_summary = 5;
+  string error_message = 6;
+}
+
+message CommandResultResponse {
+  bool acknowledged = 1;
+}

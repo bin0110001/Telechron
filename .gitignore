@@ -6,6 +6,9 @@
 # dotenv files
 .env
 
+# Dev mTLS certs (R-SEC2) — regenerate locally via scripts/Generate-DevCerts.ps1, never commit key material
+certs/
+
 # User-specific files
 *.rsuser
 *.suo

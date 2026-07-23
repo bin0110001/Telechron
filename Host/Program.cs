@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
+using Telechron.Host.Agents;
+using Telechron.Host.Agents.Grpc;
+using Telechron.Host.Agents.Mtls;
 using Telechron.Host.DesignDocuments;
 using Telechron.Host.Persistence;
 using Telechron.Host.Security.Audit;
@@ -75,6 +78,56 @@ builder.Services.AddTelechronPermissionMediation();
 
 builder.Services.AddTelechronDesignDocuments();
 
+// R-SEC2/R-SCH3: Agent<->Host gRPC channel, authenticated by mTLS (transport)
+// plus a per-Machine session token (application-level, see AgentServiceImpl).
+var mtlsOptions = new MtlsOptions
+{
+    CaCertPath = builder.Configuration["Telechron:Mtls:CaCertPath"]
+        ?? Environment.GetEnvironmentVariable("TELECHRON_MTLS_CA_PATH") ?? string.Empty,
+    HostCertPfxPath = builder.Configuration["Telechron:Mtls:HostCertPfxPath"]
+        ?? Environment.GetEnvironmentVariable("TELECHRON_MTLS_HOST_CERT_PATH") ?? string.Empty,
+    HostCertPassword = builder.Configuration["Telechron:Mtls:HostCertPassword"]
+        ?? Environment.GetEnvironmentVariable("TELECHRON_MTLS_HOST_CERT_PASSWORD") ?? string.Empty,
+};
+var enrollmentToken = builder.Configuration["Telechron:AgentEnrollmentToken"]
+    ?? Environment.GetEnvironmentVariable("TELECHRON_AGENT_ENROLLMENT_TOKEN") ?? string.Empty;
+
+var mtlsEnabled = !string.IsNullOrEmpty(mtlsOptions.CaCertPath);
+if (mtlsEnabled)
+{
+    builder.Services.AddTelechronAgentMtls(mtlsOptions);
+    builder.Services.AddTelechronAgentGrpc(enrollmentToken);
+
+    // Kestrel's --urls/ASPNETCORE_URLS binding only applies when no endpoint
+    // is configured via ConfigureKestrel — once we add the gRPC/mTLS
+    // endpoint below, the human API endpoint must ALSO be declared here
+    // explicitly, or it silently stops listening (Kestrel logs a warning,
+    // not an error, so this is easy to miss).
+    var humanApiPort = int.TryParse(builder.Configuration["Telechron:HumanApiPort"], out var configuredHumanApiPort)
+        ? configuredHumanApiPort : 5280;
+    var grpcPort = int.TryParse(builder.Configuration["Telechron:GrpcPort"], out var configuredGrpcPort)
+        ? configuredGrpcPort : 5300;
+
+    var trustedAgentCa = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificateFromFile(mtlsOptions.CaCertPath);
+    builder.WebHost.ConfigureKestrel(kestrel =>
+    {
+        kestrel.ListenAnyIP(humanApiPort, listen =>
+        {
+            listen.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1AndHttp2;
+        });
+        kestrel.ListenAnyIP(grpcPort, listen =>
+        {
+            listen.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
+            listen.UseHttps(https =>
+            {
+                https.ServerCertificate = System.Security.Cryptography.X509Certificates.X509CertificateLoader
+                    .LoadPkcs12FromFile(mtlsOptions.HostCertPfxPath, mtlsOptions.HostCertPassword);
+                https.ConfigureAgentMtlsTransport(trustedAgentCa);
+            });
+        });
+    });
+}
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -123,6 +176,11 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+if (mtlsEnabled)
+{
+    app.MapGrpcService<AgentServiceImpl>();
+}
 
 app.Run();
 
