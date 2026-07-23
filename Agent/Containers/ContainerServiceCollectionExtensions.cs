@@ -8,10 +8,21 @@ namespace Telechron.Agent.Containers;
 public static class ContainerServiceCollectionExtensions
 {
     public static IServiceCollection AddTelechronContainerExecution(
-        this IServiceCollection services, Action<PodmanConnectionOptions>? configureConnection = null, Action<RegistryAllowlist>? configureAllowlist = null)
+        this IServiceCollection services,
+        Action<PodmanConnectionOptions>? configureConnection = null,
+        Action<RegistryAllowlist>? configureAllowlist = null,
+        Action<GpuTenancyPolicy>? configureGpuTenancy = null)
     {
         services.Configure<PodmanConnectionOptions>(configureConnection ?? (_ => { }));
         services.Configure<RegistryAllowlist>(configureAllowlist ?? (_ => { }));
+        // R-SYS8: default is "not a GPU Agent" -- an operator must
+        // explicitly opt a machine into dedicated single-tenant GPU duty.
+        services.Configure<GpuTenancyPolicy>(o =>
+        {
+            o.IsDedicatedGpuAgent = false;
+            o.GpuDeviceIds = [];
+            configureGpuTenancy?.Invoke(o);
+        });
 
         services.AddSingleton<IDockerClient>(sp =>
         {
@@ -20,6 +31,8 @@ public static class ContainerServiceCollectionExtensions
         });
 
         services.AddSingleton<IImageProvenanceVerifier, ImageProvenanceVerifier>();
+        services.AddSingleton<IGpuCapabilityGate, UnimplementedGpuCapabilityGate>();
+        services.AddSingleton<IGpuStateSanitizer, NvidiaSmiGpuStateSanitizer>();
         services.AddSingleton<IContainerExecutionService, PodmanContainerExecutionService>();
 
         return services;

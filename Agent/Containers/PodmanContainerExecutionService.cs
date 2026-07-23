@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Telechron.Sdk.Containers;
 
 namespace Telechron.Agent.Containers;
@@ -14,9 +15,16 @@ namespace Telechron.Agent.Containers;
 // policy layer external to this process — Podman's own network isolation
 // is what actually keeps the container off the Host management plane and
 // sibling Agents, see containers/README.md).
+//
+// R-SYS8: GPU-requesting containers are additionally gated on this Agent
+// being a dedicated single-tenant GPU Agent and on capability approval,
+// and the device is sanitized after every GPU-requesting container exits.
 public sealed class PodmanContainerExecutionService(
     IDockerClient dockerClient,
     IImageProvenanceVerifier provenanceVerifier,
+    IOptions<GpuTenancyPolicy> gpuTenancyPolicy,
+    IGpuCapabilityGate gpuCapabilityGate,
+    IGpuStateSanitizer gpuStateSanitizer,
     ILogger<PodmanContainerExecutionService> logger) : IContainerExecutionService
 {
     public async Task<ContainerExecutionResult> ExecuteAsync(ContainerExecutionRequest request, CancellationToken ct = default)
@@ -26,6 +34,13 @@ public sealed class PodmanContainerExecutionService(
         {
             logger.LogWarning("Refused to execute container: {Reason}", provenance.Reason);
             return new ContainerExecutionResult(ContainerExecutionOutcome.Failed, null, string.Empty, provenance.Reason, TimeSpan.Zero);
+        }
+
+        if (request.RequiresGpu)
+        {
+            var gpuRefusal = await RefuseGpuRequestAsync(request, ct);
+            if (gpuRefusal is not null)
+                return gpuRefusal;
         }
 
         var stopwatch = Stopwatch.StartNew();
@@ -70,6 +85,47 @@ public sealed class PodmanContainerExecutionService(
         {
             if (containerId is not null)
                 await TryRemoveAsync(containerId, ct);
+
+            // R-SYS8: sanitize regardless of how execution ended (including
+            // timeout/failure) -- a tenant's GPU memory must not survive to
+            // the next request under any outcome.
+            if (request.RequiresGpu)
+                await TrySanitizeGpuAsync(ct);
+        }
+    }
+
+    private async Task<ContainerExecutionResult?> RefuseGpuRequestAsync(ContainerExecutionRequest request, CancellationToken ct)
+    {
+        var policy = gpuTenancyPolicy.Value;
+        if (!policy.IsDedicatedGpuAgent || policy.GpuDeviceIds.Count == 0)
+        {
+            const string reason = "GPU requested but this Agent is not configured as a dedicated single-tenant GPU Agent (R-SYS8).";
+            logger.LogWarning("Refused to execute container: {Reason}", reason);
+            return new ContainerExecutionResult(ContainerExecutionOutcome.Failed, null, string.Empty, reason, TimeSpan.Zero);
+        }
+
+        var decision = await gpuCapabilityGate.AuthorizeAsync(request, ct);
+        if (!decision.IsApproved)
+        {
+            logger.LogWarning("Refused to execute container: {Reason}", decision.Reason);
+            return new ContainerExecutionResult(ContainerExecutionOutcome.Failed, null, string.Empty, decision.Reason, TimeSpan.Zero);
+        }
+
+        return null;
+    }
+
+    private async Task TrySanitizeGpuAsync(CancellationToken ct)
+    {
+        try
+        {
+            await gpuStateSanitizer.SanitizeAsync(gpuTenancyPolicy.Value.GpuDeviceIds, ct);
+        }
+        catch (Exception ex)
+        {
+            // No fallback here would mean the next tenant could read this
+            // tenant's leftover GPU memory -- log loudly, but the caller
+            // still needs the execution result, so this doesn't fault the run.
+            logger.LogError(ex, "GPU sanitize failed after container execution -- device may retain prior tenant's state.");
         }
     }
 
@@ -99,6 +155,18 @@ public sealed class PodmanContainerExecutionService(
                 Binds = [$"{request.WorkingDirectoryHostPath}:/workspace"],
                 ReadonlyRootfs = false,
                 AutoRemove = false, // we remove explicitly after log capture
+                // R-SYS8: only reached once RefuseGpuRequestAsync has confirmed
+                // this Agent is a dedicated single-tenant GPU Agent and the
+                // request was capability-approved -- pass through exactly the
+                // devices this Agent is configured to own, never "all".
+                DeviceRequests = request.RequiresGpu
+                    ? [new DeviceRequest
+                        {
+                            Driver = "nvidia",
+                            DeviceIDs = [.. gpuTenancyPolicy.Value.GpuDeviceIds],
+                            Capabilities = [["gpu"]],
+                        }]
+                    : null,
             },
             Tty = false,
             AttachStdout = true,

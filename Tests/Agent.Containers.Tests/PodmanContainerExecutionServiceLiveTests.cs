@@ -47,7 +47,20 @@ public class PodmanContainerExecutionServiceLiveTests : IAsyncLifetime
     }
 
     private PodmanContainerExecutionService CreateService() =>
-        new(_dockerClient, new ImageProvenanceVerifier(Options.Create(new RegistryAllowlist())), NullLogger<PodmanContainerExecutionService>.Instance);
+        new(_dockerClient,
+            new ImageProvenanceVerifier(Options.Create(new RegistryAllowlist())),
+            Options.Create(new GpuTenancyPolicy()),
+            new UnimplementedGpuCapabilityGate(),
+            new NoOpGpuStateSanitizer(),
+            NullLogger<PodmanContainerExecutionService>.Instance);
+
+    // None of these live tests exercise a real GPU device (no GPU hardware
+    // on this dev host); this stands in for NvidiaSmiGpuStateSanitizer so
+    // ExecuteAsync's finally-block sanitize call has something to call.
+    private sealed class NoOpGpuStateSanitizer : IGpuStateSanitizer
+    {
+        public Task SanitizeAsync(IReadOnlyList<string> gpuDeviceIds, CancellationToken ct = default) => Task.CompletedTask;
+    }
 
     [SkippableFact]
     public async Task ExecuteAsync_ValidImageAndCommand_RunsAndCapturesStdOut()
