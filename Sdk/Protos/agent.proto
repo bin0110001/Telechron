@@ -28,6 +28,14 @@ service AgentService {
 
   // Agent reports the outcome of a previously dispatched command.
   rpc ReportCommandResult (CommandResultRequest) returns (CommandResultResponse);
+
+  // Server-streaming blob fetch — an Agent that needs a blob referenced by
+  // a dispatched command (e.g. RunModuleSelfTest's moduleAssemblyBlobRef,
+  // R-MOD4/R-MOD5b) pulls it over this call rather than needing direct
+  // filesystem access to the Host's local IArtifactBlobStore, which would
+  // break the Host/Agent separation for any Agent not co-located with the
+  // Host.
+  rpc FetchArtifact (FetchArtifactRequest) returns (stream FetchArtifactChunk);
 }
 
 message RegisterAgentRequest {
@@ -88,4 +96,23 @@ message CommandResultRequest {
 
 message CommandResultResponse {
   bool acknowledged = 1;
+}
+
+message FetchArtifactRequest {
+  string machine_id = 1;
+  string session_token = 2;
+  // Opaque blob reference (IArtifactBlobStore.SaveAsync's return value) —
+  // treated as a handle, never a path to construct manually. The Host-side
+  // handler applies the same path-traversal guard IArtifactBlobStore's own
+  // reader already uses, since this value ultimately reaches filesystem
+  // I/O.
+  string blob_ref = 3;
+}
+
+message FetchArtifactChunk {
+  bytes data = 1;
+  // True on the final chunk (including a legitimate zero-length final
+  // chunk for an empty blob) so the Agent knows the stream completed
+  // rather than merely disconnected mid-transfer.
+  bool is_final = 2;
 }

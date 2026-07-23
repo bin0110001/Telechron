@@ -12,6 +12,7 @@ public static class AgentServiceCollectionExtensions
         services.AddGrpc();
         services.AddSingleton<ICommandDispatchValidator, CommandDispatchValidator>();
         services.AddSingleton<IDispatchQueue, InMemoryDispatchQueue>();
+        services.AddSingleton<ICommandResultCorrelator, InMemoryCommandResultCorrelator>();
         services.Configure<AgentEnrollmentOptions>(o => o.EnrollmentToken = enrollmentToken);
         return services;
     }

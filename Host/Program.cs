@@ -5,6 +5,7 @@ using Telechron.Host.Agents;
 using Telechron.Host.Agents.Grpc;
 using Telechron.Host.Agents.Mtls;
 using Telechron.Host.DesignDocuments;
+using Telechron.Host.Modules;
 using Telechron.Host.Persistence;
 using Telechron.Host.Security.Audit;
 using Telechron.Host.Security.Auth;
@@ -98,6 +99,17 @@ if (mtlsEnabled)
     builder.Services.AddTelechronAgentMtls(mtlsOptions);
     builder.Services.AddTelechronAgentGrpc(enrollmentToken);
     builder.Services.AddTelechronStalledRunWatchdog();
+
+    // R-MOD4a/R-MOD5a: module self-test dispatch needs IDispatchQueue/
+    // ICommandResultCorrelator, which only exist once Agent gRPC is
+    // registered above -- without an Agent transport there's nowhere to
+    // dispatch a containerized self-test to.
+    builder.Services.AddTelechronModules(o =>
+    {
+        var configuredKeys = builder.Configuration.GetSection("Telechron:Modules:TrustedPublisherKeys").Get<Dictionary<string, string>>();
+        if (configuredKeys is { Count: > 0 })
+            o.TrustedKeys = configuredKeys;
+    });
 
     // Kestrel's --urls/ASPNETCORE_URLS binding only applies when no endpoint
     // is configured via ConfigureKestrel — once we add the gRPC/mTLS

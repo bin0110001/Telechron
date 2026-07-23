@@ -1,4 +1,5 @@
 using Telechron.Agent.Containers;
+using Telechron.Agent.Dispatch;
 using Telechron.Agent.Grpc;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -33,6 +34,16 @@ builder.Services.AddTelechronContainerExecution(
         if (configured is { Length: > 0 })
             o.AllowedRegistries = configured;
     });
+
+builder.Services.Configure<ModuleSelfTestHarnessOptions>(o =>
+{
+    o.HarnessPublishDirectory = builder.Configuration["Telechron:ModuleSelfTestHarnessPublishDirectory"]
+        ?? Environment.GetEnvironmentVariable("TELECHRON_MODULE_SELFTEST_HARNESS_DIR") ?? o.HarnessPublishDirectory;
+});
+builder.Services.AddSingleton<ArtifactFetcher>();
+builder.Services.AddSingleton<ModuleSelfTestHarnessLocator>();
+builder.Services.AddSingleton<ICommandHandler, RunModuleSelfTestCommandHandler>();
+builder.Services.AddSingleton<CommandHandlerRegistry>();
 
 var host = builder.Build();
 host.Run();

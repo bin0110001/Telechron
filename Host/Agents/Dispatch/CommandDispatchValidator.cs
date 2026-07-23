@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Json.Schema;
+using Telechron.Sdk.Agents;
 using Telechron.Sdk.Security;
 
 namespace Telechron.Host.Agents.Dispatch;
@@ -58,6 +59,19 @@ public sealed class CommandDispatchValidator : ICommandDispatchValidator
               "properties": {
                 "repairAttemptId": { "type": "string", "format": "uuid" },
                 "snapshotRef": { "type": "string", "pattern": "^(?!.*\\.\\.)[A-Za-z0-9_][A-Za-z0-9_./-]*$", "maxLength": 512 }
+              }
+            }
+            """),
+        [CommandKinds.RunModuleSelfTest] = JsonSchema.FromText("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["moduleName", "moduleAssemblyBlobRef", "toolchainImageDigest"],
+              "properties": {
+                "moduleName": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$", "maxLength": 128 },
+                "moduleAssemblyBlobRef": { "type": "string", "pattern": "^(?!.*\\.\\.)[A-Za-z0-9_][A-Za-z0-9_./-]*$", "maxLength": 512 },
+                "toolchainImageDigest": { "type": "string", "pattern": "^[A-Za-z0-9.\\-/]+@sha256:[A-Fa-f0-9]{64}$", "maxLength": 512 },
+                "maximallyRestricted": { "type": "boolean" }
               }
             }
             """),

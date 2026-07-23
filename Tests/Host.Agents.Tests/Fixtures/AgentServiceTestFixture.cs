@@ -29,8 +29,10 @@ public sealed class AgentServiceTestFixture : IAsyncDisposable
         var services = new ServiceCollection();
         services.AddTelechronPersistence(Path.Combine(root, "telechron.db"), Path.Combine(root, "backups"));
         services.AddTelechronAuditLog(Path.Combine(root, "audit.db"));
+        services.AddTelechronArtifactBlobStore(Path.Combine(root, "artifacts"));
         services.AddSingleton<ICommandDispatchValidator, CommandDispatchValidator>();
         services.AddSingleton<IDispatchQueue, InMemoryDispatchQueue>();
+        services.AddSingleton<ICommandResultCorrelator, InMemoryCommandResultCorrelator>();
         services.Configure<AgentEnrollmentOptions>(o => o.EnrollmentToken = EnrollmentToken);
         services.AddScoped<AgentServiceImpl>();
         services.AddLogging();

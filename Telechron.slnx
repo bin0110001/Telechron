@@ -12,6 +12,10 @@
   <Folder Name="/Sdk/">
     <Project Path="Sdk/Telechron.Sdk.csproj" />
   </Folder>
+  <Folder Name="/Tools/" />
+  <Folder Name="/Tools/ModuleSelfTestHarness/">
+    <Project Path="Tools/ModuleSelfTestHarness/Telechron.Tools.ModuleSelfTestHarness.csproj" />
+  </Folder>
   <Folder Name="/Tests/" />
   <Folder Name="/Tests/Agent.Containers.Tests/">
     <Project Path="Tests/Agent.Containers.Tests/Telechron.Agent.Containers.Tests.csproj" />

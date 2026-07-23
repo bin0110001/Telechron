@@ -18,6 +18,8 @@ public sealed class AgentServiceImpl(
     IAgentSessionRepository sessionRepository,
     IDispatchQueue dispatchQueue,
     IRunRepository runRepository,
+    ICommandResultCorrelator resultCorrelator,
+    IArtifactBlobStore artifactBlobStore,
     IAuditLog auditLog,
     IOptions<AgentEnrollmentOptions> enrollmentOptions,
     ILogger<AgentServiceImpl> logger) : AgentService.AgentServiceBase
@@ -136,10 +138,44 @@ public sealed class AgentServiceImpl(
     {
         await AuthenticateSessionAsync(request.MachineId, request.SessionToken, context.CancellationToken);
 
+        if (Guid.TryParse(request.CommandId, out var commandId))
+        {
+            resultCorrelator.Complete(new CommandOutcome(
+                commandId, request.Succeeded, request.OutputSummary, request.ErrorMessage));
+        }
+
         // R-DM2/R-FIX1: translating a reported result into Run/Finding state
         // transitions is Phase 7's Findings-generation concern; this RPC's
-        // job ends at acknowledging receipt over the wire.
+        // job ends at acknowledging receipt over the wire (plus, as of
+        // Phase 5, completing any ICommandResultCorrelator wait for this
+        // CommandId — a synchronous-from-the-caller's-perspective bridge
+        // that module self-test dispatch and Phase 7's Verify stage share).
         return new CommandResultResponse { Acknowledged = true };
+    }
+
+    public override async Task FetchArtifact(
+        FetchArtifactRequest request, IServerStreamWriter<FetchArtifactChunk> responseStream, ServerCallContext context)
+    {
+        await AuthenticateSessionAsync(request.MachineId, request.SessionToken, context.CancellationToken);
+
+        // Chunk size chosen to stay well under gRPC's default 4MB message
+        // limit while avoiding excessive round trips for typical module
+        // assembly sizes (tens of KB to a few MB).
+        const int chunkSize = 64 * 1024;
+        var buffer = new byte[chunkSize];
+
+        await using var stream = await artifactBlobStore.OpenReadAsync(request.BlobRef, context.CancellationToken);
+        int bytesRead;
+        while ((bytesRead = await stream.ReadAsync(buffer.AsMemory(0, chunkSize), context.CancellationToken)) > 0)
+        {
+            await responseStream.WriteAsync(new FetchArtifactChunk
+            {
+                Data = Google.Protobuf.ByteString.CopyFrom(buffer, 0, bytesRead),
+                IsFinal = false,
+            }, context.CancellationToken);
+        }
+
+        await responseStream.WriteAsync(new FetchArtifactChunk { Data = Google.Protobuf.ByteString.Empty, IsFinal = true }, context.CancellationToken);
     }
 
     private IAsyncEnumerable<DispatchedCommand> ReadDispatchAsync(Guid machineId, CancellationToken ct) =>

@@ -1,4 +1,5 @@
 using Telechron.Host.Agents.Dispatch;
+using Telechron.Sdk.Agents;
 
 namespace Telechron.Host.Agents.Tests;
 

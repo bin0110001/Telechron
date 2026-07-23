@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Telechron.Host.Agents.Dispatch;
 using Telechron.Host.Agents.Tests.Fixtures;
+using Telechron.Sdk.Agents;
 using Telechron.Sdk.Persistence;
 using Telechron.Sdk.Security.Audit;
 

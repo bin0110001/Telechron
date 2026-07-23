@@ -1,5 +1,6 @@
 using global::Grpc.Core;
 using Microsoft.Extensions.Options;
+using Telechron.Agent.Dispatch;
 using Telechron.Sdk.Grpc;
 
 namespace Telechron.Agent.Grpc;
@@ -12,6 +13,7 @@ namespace Telechron.Agent.Grpc;
 public sealed class AgentConnectionWorker(
     AgentChannelFactory channelFactory,
     IOptions<AgentGrpcOptions> options,
+    CommandHandlerRegistry commandHandlers,
     ILogger<AgentConnectionWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(15);
@@ -84,7 +86,44 @@ public sealed class AgentConnectionWorker(
         {
             logger.LogInformation("Received dispatched command {CommandId} ({Kind}) for Run {RunId}.",
                 command.CommandId, command.CommandKind, command.RunId);
-            // R-SYS6 container execution boundary picks this up next.
+
+            // Fire-and-forget per command so a slow/long-running self-test
+            // or build doesn't block this Agent from receiving/starting the
+            // next dispatched command concurrently.
+            _ = HandleDispatchedCommandAsync(client, registration, command, ct);
         }
+    }
+
+    private async Task HandleDispatchedCommandAsync(
+        AgentService.AgentServiceClient client, RegisterAgentResponse registration, CommandDispatch command, CancellationToken ct)
+    {
+        var handler = commandHandlers.Find(command.CommandKind);
+        if (handler is null)
+        {
+            logger.LogWarning("No handler registered for command kind '{Kind}' — command {CommandId} not executed.",
+                command.CommandKind, command.CommandId);
+            return;
+        }
+
+        CommandHandlerResult result;
+        try
+        {
+            result = await handler.HandleAsync(command, client, registration.MachineId, registration.SessionToken, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Command handler for {CommandId} ({Kind}) threw.", command.CommandId, command.CommandKind);
+            result = CommandHandlerResult.Failure(ex.Message);
+        }
+
+        await client.ReportCommandResultAsync(new CommandResultRequest
+        {
+            MachineId = registration.MachineId,
+            SessionToken = registration.SessionToken,
+            CommandId = command.CommandId,
+            Succeeded = result.Succeeded,
+            OutputSummary = result.OutputSummary,
+            ErrorMessage = result.ErrorMessage,
+        }, cancellationToken: ct);
     }
 }
