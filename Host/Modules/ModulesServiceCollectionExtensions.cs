@@ -9,9 +9,12 @@ namespace Telechron.Host.Modules;
 public static class ModulesServiceCollectionExtensions
 {
     public static IServiceCollection AddTelechronModules(
-        this IServiceCollection services, Action<TrustedPublisherKeyStoreOptions>? configureTrustedKeys = null)
+        this IServiceCollection services,
+        Action<TrustedPublisherKeyStoreOptions>? configureTrustedKeys = null,
+        Action<ModuleCanaryOptions>? configureCanary = null)
     {
         services.Configure<TrustedPublisherKeyStoreOptions>(configureTrustedKeys ?? (_ => { }));
+        services.Configure<ModuleCanaryOptions>(configureCanary ?? (_ => { }));
         services.AddSingleton<TrustedPublisherKeyStore>();
         services.AddSingleton<IModuleIntegrityVerifier, ModuleIntegrityVerifier>();
         services.AddSingleton<IModuleRuntime, ModuleRuntime>();
@@ -19,6 +22,10 @@ public static class ModulesServiceCollectionExtensions
         services.AddSingleton<ISelfTestFalsifiabilityChecker, SelfTestFalsifiabilityChecker>();
         services.AddSingleton<IModuleCapabilityMediator, ModuleCapabilityMediator>();
         services.AddSingleton<IModuleTrustEvaluator, ModuleTrustEvaluator>();
+        services.AddSingleton<InFlightInvocationTracker>();
+        services.AddSingleton<IModuleDrainCoordinator, ModuleDrainCoordinator>();
+        services.AddSingleton<IModuleCanaryObserver, ModuleCanaryObserver>();
+        services.AddSingleton<IModuleHotReloadCoordinator, ModuleHotReloadCoordinator>();
         return services;
     }
 }
