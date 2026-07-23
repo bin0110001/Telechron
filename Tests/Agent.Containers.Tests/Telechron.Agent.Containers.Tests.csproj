@@ -21,8 +21,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Agent\Telechron.Agent.csproj" />
+    <ProjectReference Include="..\..\Host\Telechron.Host.csproj" />
     <ProjectReference Include="..\..\Modules\DotnetToolchain\Telechron.Modules.DotnetToolchain.csproj" />
     <ProjectReference Include="..\..\Modules\DotnetTestRunner\Telechron.Modules.DotnetTestRunner.csproj" />
+    <ProjectReference Include="..\Host.Persistence.Tests\Telechron.Host.Persistence.Tests.csproj" />
   </ItemGroup>
 
 </Project>
