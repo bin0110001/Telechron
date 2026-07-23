@@ -11,8 +11,21 @@ public sealed class ModuleLoadContext(string moduleAssemblyPath) : AssemblyLoadC
 {
     private readonly AssemblyDependencyResolver _resolver = new(moduleAssemblyPath);
 
+    // Telechron.Sdk defines IModule -- the contract type both the Host
+    // (running in the Default ALC) and every module reference. If a module
+    // ships its own copy of Sdk.dll and this ALC loaded it, the module's
+    // IModule and the Host's IModule would be two DISTINCT Type objects
+    // despite identical names, and `is IModule` / IsAssignableFrom checks
+    // would silently fail. Deferring to Default for this one assembly
+    // keeps the contract type identity shared, which is what makes the
+    // isolation boundary usable at all rather than just isolated.
+    private const string SharedContractAssemblyName = "Telechron.Sdk";
+
     protected override Assembly? Load(AssemblyName assemblyName)
     {
+        if (assemblyName.Name == SharedContractAssemblyName)
+            return null; // falls through to Default's already-loaded copy
+
         var path = _resolver.ResolveAssemblyToPath(assemblyName);
         return path is not null ? LoadFromAssemblyPath(path) : null;
     }

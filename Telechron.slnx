@@ -23,6 +23,9 @@
   <Folder Name="/Tests/Host.Agents.Tests/">
     <Project Path="Tests/Host.Agents.Tests/Telechron.Host.Agents.Tests.csproj" />
   </Folder>
+  <Folder Name="/Tests/Host.Modules.Tests/">
+    <Project Path="Tests/Host.Modules.Tests/Telechron.Host.Modules.Tests.csproj" />
+  </Folder>
   <Folder Name="/Tests/Host.Persistence.Tests/">
     <Project Path="Tests/Host.Persistence.Tests/Telechron.Host.Persistence.Tests.csproj" />
   </Folder>

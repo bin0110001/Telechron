@@ -28,6 +28,14 @@ try
     var context = new AssemblyLoadContext("module-self-test", isCollectible: true);
     context.Resolving += (_, name) =>
     {
+        // Telechron.Sdk defines IModule -- must resolve to the SAME Type
+        // object this harness's own `typeof(IModule)` uses (the harness's
+        // Default-context copy), or IsAssignableFrom below silently fails
+        // even though the module's type genuinely implements IModule. See
+        // Host/Modules/Runtime/ModuleLoadContext.cs for the identical fix.
+        if (name.Name == "Telechron.Sdk")
+            return null;
+
         var path = resolver.ResolveAssemblyToPath(name);
         return path is not null ? context.LoadFromAssemblyPath(path) : null;
     };
