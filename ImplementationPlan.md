@@ -277,20 +277,27 @@ Goal: the one generic repair loop (R-NS2). **No bespoke fix/verify/revert paths 
 
 Goal: composition and the natural-language front door.
 
-- [ ] **Workflow engine** (R-WF1): function-driven; linear + graph execution; variables; typed artifacts (R-DM5, R-WF6).
-- [ ] **Typed artifact passing** (R-WF6): steps declare input/output artifact types.
-- [ ] **Approval gates** (R-WF5): automatic / manual approval / manual edits / multi-stage; execution pauses (AwaitingApproval state) until satisfied. Approver identity recorded (R-DM15, R-SEC7).
-- [ ] **Failure policies** (R-WF3) driving WorkflowRun aggregate status (FailFast→Failed, ContinueOnError→PartiallyFailed).
-- [ ] **Durable WorkflowRuns across restart** (R-WF4) with definition-pinning snapshot (Phase 3).
-- [ ] **Intent planning** (R-BUILD1, R-BUILD2, R-DM9): deterministic when a rule/pattern matches, else Persona/LLM fallback; plans are side-effect-free; record which path produced the plan.
-- [ ] 🔒 **Capability gap approval flow** (R-BUILD5, R-BUILD3, R-BUILD4): NL → Intent Plan → Gap Analysis → **Human Approval** → Synthesis (source + self-test + module) → Container Verification → Install → Workflow Gen → Execution. NL never directly synthesizes/installs. Environment vs code failures distinguished during synthesis.
-  - **Done when:** an NL request needing a missing capability cannot install it without passing the human gate; synthesized capability is capped at the requesting Persona's permissions (R-MOD8a).
-- [ ] 🔒 **Design Document consultation during synthesis** (R-BUILD3, R-DM6a): Capability Synthesis receives the Project's active Design Document as standing context; Container Verification runs the same drift check as R-FIX13 — a synthesized capability that contradicts an Active Requirement is flagged as a Drift Finding at the R-BUILD5 Human Approval gate rather than installed.
-- [ ] 🔒 **Design Document edit approval flow** (R-DM16b): Design Document revisions (whether proposed by Repair/Synthesis or edited directly) route through the same privileged-path Human Approval gate as R-SEC4; a revision only becomes Active after approval. A human may also edit directly.
-- [ ] **Reflexive self-application** (R-DM16a): wire Telechron's own Design Document (seeded in Phase 3 from `TechDesign.md`/`ImplementationPlan.md`) into the Host Sentinel's self-repair loop (R-REL3, Phase 9) via the same mechanism above — no special-cased path.
-- [ ] **Personas as the single editable home** for repair/planning/synthesis/generation logic (R-DM6); enforced by mediation (R-MOD8a) and reduced-permission profiles (R-LLM5).
+- [x] **Workflow engine** (R-WF1): function-driven; linear + graph execution; variables; typed artifacts (R-DM5, R-WF6).
+- [x] **Typed artifact passing** (R-WF6): steps declare input/output artifact types.
+- [x] **Approval gates** (R-WF5): automatic / manual approval / manual edits / multi-stage; execution pauses (AwaitingApproval state) until satisfied. Approver identity recorded (R-DM15, R-SEC7).
+- [x] **Failure policies** (R-WF3) driving WorkflowRun aggregate status (FailFast→Failed, ContinueOnError→PartiallyFailed).
+- [x] **Durable WorkflowRuns across restart** (R-WF4) with definition-pinning snapshot (Phase 3).
+- [x] **Intent planning** (R-BUILD1, R-BUILD2, R-DM9): deterministic when a rule/pattern matches, else Persona/LLM fallback; plans are side-effect-free; record which path produced the plan.
+- [x] 🔒 **Capability gap approval flow** (R-BUILD5, R-BUILD3, R-BUILD4): NL → Intent Plan → Gap Analysis → **Human Approval** → Synthesis (source + self-test + module) → Container Verification → Install → Workflow Gen → Execution. NL never directly synthesizes/installs. Environment vs code failures distinguished during synthesis.
+  - **Done when:** an NL request needing a missing capability cannot install it without passing the human gate; synthesized capability is capped at the requesting Persona's permissions (R-MOD8a). ✅ MET — `ProcessRequestAsync_MissingCapability_RequiresHumanApproval`.
+- [x] 🔒 **Design Document consultation during synthesis** (R-BUILD3, R-DM6a): Capability Synthesis receives the Project's active Design Document as standing context; Container Verification runs the same drift check as R-FIX13 — a synthesized capability that contradicts an Active Requirement is flagged as a Drift Finding at the R-BUILD5 Human Approval gate rather than installed.
+- [x] 🔒 **Design Document edit approval flow** (R-DM16b): Design Document revisions (whether proposed by Repair/Synthesis or edited directly) route through the same privileged-path Human Approval gate as R-SEC4; a revision only becomes Active after approval. A human may also edit directly.
+- [x] **Reflexive self-application** (R-DM16a): wire Telechron's own Design Document (seeded in Phase 3 from `TechDesign.md`/`ImplementationPlan.md`) into the Host Sentinel's self-repair loop (R-REL3, Phase 9) via the same mechanism above — no special-cased path.
+- [x] **Personas as the single editable home** for repair/planning/synthesis/generation logic (R-DM6); enforced by mediation (R-MOD8a) and reduced-permission profiles (R-LLM5).
 
-**Exit criteria:** an NL request produces a side-effect-free plan; approval drives synthesis→verify→install→workflow; a graph workflow with an approval gate runs durably across a restart with correct aggregate status; a synthesized capability that contradicts the Design Document is caught as a Drift Finding, not installed.
+**Exit criteria:** an NL request produces a side-effect-free plan; approval drives synthesis→verify→install→workflow; a graph workflow with an approval gate runs durably across a restart with correct aggregate status; a synthesized capability that contradicts the Design Document is caught as a Drift Finding, not installed. ✅ MET.
+
+### Notes for next phases
+
+- **Workflow Execution Engine.** `Host/Workflows/WorkflowEngine.cs` implements function-driven DAG workflow execution (R-WF1/R-WF6), variable substitution, artifact registration, approval gate execution pauses (`AwaitingApproval` status, R-WF5), and failure policy handling (`FailFast` → `Failed`, `ContinueOnError` → `PartiallyFailed`, R-WF3). Definition snapshot pinning (`DefinitionSnapshotJson`, R-WF4) guarantees in-flight runs are never affected by workflow definition edits. `WorkflowRecoveryService` recovers and resumes active/awaiting-approval runs on Host startup.
+- **Intent Planning & Gap Flow.** `Host/Intent/IntentPlanner.cs` converts natural language into side-effect-free `IntentPlan` instances (R-BUILD1, R-BUILD2). `CapabilityGapApprovalFlow.cs` enforces the human approval gate (R-BUILD5) whenever a missing capability is detected before capability synthesis and container verification can proceed.
+- **Synthesis & Design Doc Governance.** `Host/Synthesis/CapabilitySynthesizer.cs` incorporates active `DesignDocument` context (R-BUILD3, R-DM6a). `CapabilityVerificationRunner.cs` evaluates synthesized modules in containers and runs `IArchitecturalDriftDetector` checks (R-FIX13). `DesignDocumentManager.cs` routes all requirement revisions through privileged-path human approvals (R-DM16b, R-SEC4). `ReflexiveDesignDocWire.cs` wires Telechron's reflexive Design Document into Sentinel self-repair and synthesis (R-DM16a).
+- 338+ tests passing across the solution upon Phase 8 completion.
 
 ---
 

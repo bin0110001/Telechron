@@ -53,4 +53,7 @@
   <Folder Name="/Tests/Sdk.Tests/">
     <Project Path="Tests/Sdk.Tests/Telechron.Sdk.Tests.csproj" />
   </Folder>
+  <Folder Name="/Tests/Host.Workflows.Tests/">
+    <Project Path="Tests/Host.Workflows.Tests/Telechron.Host.Workflows.Tests.csproj" />
+  </Folder>
 </Solution>
