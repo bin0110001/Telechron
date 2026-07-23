@@ -1,3 +1,4 @@
+using Telechron.Agent.Containers;
 using Telechron.Agent.Grpc;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -19,6 +20,19 @@ builder.Services.Configure<AgentGrpcOptions>(o =>
 
 builder.Services.AddSingleton<AgentChannelFactory>();
 builder.Services.AddHostedService<AgentConnectionWorker>();
+
+builder.Services.AddTelechronContainerExecution(
+    configureConnection: o =>
+    {
+        o.Endpoint = builder.Configuration["Telechron:Podman:Endpoint"]
+            ?? Environment.GetEnvironmentVariable("TELECHRON_PODMAN_ENDPOINT") ?? o.Endpoint;
+    },
+    configureAllowlist: o =>
+    {
+        var configured = builder.Configuration.GetSection("Telechron:Containers:AllowedRegistries").Get<string[]>();
+        if (configured is { Length: > 0 })
+            o.AllowedRegistries = configured;
+    });
 
 var host = builder.Build();
 host.Run();
