@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Telechron.Host.Persistence.Backup;
 using Telechron.Host.Persistence.Repositories;
+using Telechron.Host.Persistence.Retention;
 using Telechron.Sdk.Persistence;
 
 namespace Telechron.Host.Persistence;
@@ -68,6 +69,20 @@ public static class PersistenceServiceCollectionExtensions
     public static IServiceCollection AddTelechronArtifactBlobStore(this IServiceCollection services, string rootDirectory)
     {
         services.AddSingleton<Sdk.Persistence.IArtifactBlobStore>(new FilesystemArtifactBlobStore(rootDirectory));
+        return services;
+    }
+
+    // R-PER7: age/count retention with archival-before-delete for Runs/Findings.
+    public static IServiceCollection AddTelechronRetention(this IServiceCollection services, string archiveRootDirectory)
+    {
+        services.AddSingleton<IRetentionArchive>(new FilesystemRetentionArchive(archiveRootDirectory));
+        services.AddScoped<RetentionPass>();
+        return services;
+    }
+
+    public static IServiceCollection AddTelechronScheduledRetention(this IServiceCollection services)
+    {
+        services.AddHostedService<ScheduledRetentionHostedService>();
         return services;
     }
 }

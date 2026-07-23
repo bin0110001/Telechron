@@ -10,7 +10,10 @@ param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot ".."))
 )
 
-$excludeDirs = @('bin', 'obj', 'node_modules', '.git', 'dist', 'build')
+# Migrations: EF Core auto-generates Designer.cs/ModelSnapshot.cs files that
+# grow with schema size and aren't hand-maintained — splitting them isn't
+# meaningful, so R-ENG1's split-for-maintainability intent doesn't apply.
+$excludeDirs = @('bin', 'obj', 'node_modules', '.git', 'dist', 'build', 'Migrations')
 $extensions = @('*.cs', '*.ts', '*.tsx', '*.js', '*.jsx')
 
 $violations = @()

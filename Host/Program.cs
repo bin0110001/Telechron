@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
+using Telechron.Host.DesignDocuments;
 using Telechron.Host.Persistence;
 using Telechron.Host.Security.Audit;
 using Telechron.Host.Security.Auth;
@@ -28,6 +29,11 @@ builder.Services.AddTelechronScheduledBackups();
 // R-PER7: Artifact binary payloads live outside SQLite.
 var artifactBlobDirectory = Path.Combine(dataDirectory, "artifacts");
 builder.Services.AddTelechronArtifactBlobStore(artifactBlobDirectory);
+
+// R-PER7: retention archival lands alongside artifacts — same out-of-SQLite filesystem.
+var retentionArchiveDirectory = Path.Combine(dataDirectory, "retention-archive");
+builder.Services.AddTelechronRetention(retentionArchiveDirectory);
+builder.Services.AddTelechronScheduledRetention();
 
 // R-SEC7: physically separate SQLite file from the operational DB above.
 var auditDbPath = Path.Combine(dataDirectory, "telechron-audit.db");
@@ -67,6 +73,8 @@ builder.Services.AddTelechronRateLimiting();
 
 builder.Services.AddTelechronPermissionMediation();
 
+builder.Services.AddTelechronDesignDocuments();
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -76,6 +84,28 @@ using (var scope = app.Services.CreateScope())
 
     var auditDb = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
     auditDb.Database.Migrate();
+}
+
+// R-DM16a: seed/refresh Telechron's own reflexive Design Document from
+// TechDesign.md on every startup — idempotent, and best-effort (a missing
+// source file logs a warning rather than failing Host startup, since e.g.
+// test/deployment environments may not have the repo docs alongside them).
+using (var scope = app.Services.CreateScope())
+{
+    var repoRoot = builder.Configuration["Telechron:RepoRoot"]
+        ?? Directory.GetParent(AppContext.BaseDirectory)?.Parent?.Parent?.Parent?.Parent?.FullName;
+    var techDesignPath = repoRoot is not null ? Path.Combine(repoRoot, "TechDesign.md") : null;
+
+    if (techDesignPath is not null && File.Exists(techDesignPath))
+    {
+        var seeder = scope.ServiceProvider.GetRequiredService<ReflexiveDesignDocumentSeeder>();
+        await seeder.SeedFromMarkdownAsync(await File.ReadAllTextAsync(techDesignPath), repoRoot!);
+    }
+    else
+    {
+        scope.ServiceProvider.GetRequiredService<ILogger<Program>>()
+            .LogWarning("TechDesign.md not found at {Path}; skipping reflexive Design Document seeding (R-DM16a).", techDesignPath);
+    }
 }
 
 // Configure the HTTP request pipeline.

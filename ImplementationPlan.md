@@ -112,27 +112,37 @@ Goal: the non-negotiable security floor, wired **before** the rest of the domain
 
 Goal: the rest of the persisted entities, built on the secured core. Each is created with its security seams already available (RBAC scoping, audit hooks, permission mediation), so none needs a retrofit.
 
-- [ ] Implement remaining domain entities as persisted aggregates. **One entity per task-ish; group trivial ones.** Each needs migration + repository + round-trip test, and wires its Project FKs back to Phase 1's `Project`:
-  - [ ] `Run` + full lifecycle states (R-DM2): Pending/Running/Passed/Failed/Cancelled/TimedOut/Stalled.
-  - [ ] `Finding` (R-DM3) — incl. **Failure Class (Environment vs Code)** field (R-FIX8) and **Provenance** back-refs (R-DM3a).
-  - [ ] `RepairAttempt` (R-DM3a) — many-to-many to Findings; snapshot ref, patch, verify result, approver, resulting artifact/commit + provenance ref.
-  - [ ] `Function` (R-DM4) — incl. deprecation flag (R-DM7a).
-  - [ ] `Workflow` + `WorkflowRun` — **WorkflowRun lifecycle** (Pending/Running/AwaitingApproval/PartiallyFailed/Passed/Failed/Cancelled/TimedOut) and **definition pinning** snapshot (R-DM5, R-WF4).
-  - [ ] `Persona` (R-DM6) — allowed tools/connectors/workflows, max iterations, max cost, approval policies, allowed secrets (by handle). Its allowlists feed the Phase 2 mediation primitive.
-  - [ ] `Module` (R-DM7) + version fields, semver (R-DM7a).
-  - [ ] `Machine` + `Resource` (R-DM8) — incl. mutually-exclusive resource groups.
-  - [ ] `IntentPlan` (R-DM9) — side-effect-free proposal.
-  - [ ] `LlmConnection` (R-DM10).
-  - [ ] `Connector` (R-DM11) — incl. deprecation flag (R-DM7a); reusable across projects.
-  - [ ] `Artifact` (R-DM13) — **metadata/reference only in DB; binary payload lives outside SQLite** (R-PER7).
-  - [ ] `Toolchain` (R-DM14).
-  - [ ] `DesignDocument` + `Requirement` (R-DM16) — versioned revisions (not overwrites), Requirement entries with stable `R-XXX` IDs, status (Active/Superseded/Deprecated), Project FK. **Seed Telechron's own Design Document from `TechDesign.md` + `ImplementationPlan.md`** (R-DM16a) so the reflexive self-repair path has real content from day one instead of an empty placeholder.
-- [ ] Implement **binary Artifact blob storage** outside SQLite (filesystem or blob store), DB holds references only (R-PER7).
+- [x] Implement remaining domain entities as persisted aggregates. **One entity per task-ish; group trivial ones.** Each needs migration + repository + round-trip test, and wires its Project FKs back to Phase 1's `Project`:
+  - [x] `Run` + full lifecycle states (R-DM2): Pending/Running/Passed/Failed/Cancelled/TimedOut/Stalled.
+  - [x] `Finding` (R-DM3) — incl. **Failure Class (Environment vs Code)** field (R-FIX8) and **Provenance** back-refs (R-DM3a).
+  - [x] `RepairAttempt` (R-DM3a) — many-to-many to Findings; snapshot ref, patch, verify result, approver, resulting artifact/commit + provenance ref.
+  - [x] `Function` (R-DM4) — incl. deprecation flag (R-DM7a).
+  - [x] `Workflow` + `WorkflowRun` — **WorkflowRun lifecycle** (Pending/Running/AwaitingApproval/PartiallyFailed/Passed/Failed/Cancelled/TimedOut) and **definition pinning** snapshot (R-DM5, R-WF4).
+  - [x] `Persona` (R-DM6) — allowed tools/connectors/workflows, max iterations, max cost, approval policies, allowed secrets (by handle). Its allowlists feed the Phase 2 mediation primitive.
+  - [x] `Module` (R-DM7) + version fields, semver (R-DM7a).
+  - [x] `Machine` + `Resource` (R-DM8) — incl. mutually-exclusive resource groups.
+  - [x] `IntentPlan` (R-DM9) — side-effect-free proposal.
+  - [x] `LlmConnection` (R-DM10).
+  - [x] `Connector` (R-DM11) — incl. deprecation flag (R-DM7a); reusable across projects.
+  - [x] `Artifact` (R-DM13) — **metadata/reference only in DB; binary payload lives outside SQLite** (R-PER7).
+  - [x] `Toolchain` (R-DM14).
+  - [x] `DesignDocument` + `Requirement` (R-DM16) — versioned revisions (not overwrites), Requirement entries with stable `R-XXX` IDs, status (Active/Superseded/Deprecated), Project FK. **Seed Telechron's own Design Document from `TechDesign.md` + `ImplementationPlan.md`** (R-DM16a) so the reflexive self-repair path has real content from day one instead of an empty placeholder.
+- [x] Implement **binary Artifact blob storage** outside SQLite (filesystem or blob store), DB holds references only (R-PER7).
   - **Done when:** storing a large artifact does not grow the SQLite file; only metadata is in the DB.
-- [ ] Implement **retention policy** scaffolding for Runs/Findings/logs/LLM records with archival-before-delete; exempt repair-lineage data (R-PER7).
+- [x] Implement **retention policy** scaffolding for Runs/Findings/logs/LLM records with archival-before-delete; exempt repair-lineage data (R-PER7).
   - **Done when:** a retention pass archives+prunes old rows but leaves repair-lineage intact.
 
-**Exit criteria:** all remaining entities persist and round-trip; artifacts stored out-of-DB; retention pass works; every entity's access is already RBAC-scopable and audit-hookable.
+**Exit criteria:** all remaining entities persist and round-trip; artifacts stored out-of-DB; retention pass works; every entity's access is already RBAC-scopable and audit-hookable. ✅ MET.
+
+**Notes for next phases:**
+- 15 new domain entities landed (Machine, Resource, LlmConnection, Toolchain, Function, Connector, Module, Run, Persona, Workflow, WorkflowRun, Finding, IntentPlan, Artifact, RepairAttempt) plus the R-DM16 trio (DesignDocument, Requirement, RequirementRevision) — 19 new tables total (18 entities + the RepairAttempt↔Finding join table). One consolidated migration (`Phase3DomainEntities`).
+- **Cross-entity FK policy this phase established**: some entities (Function, Toolchain, Connector) intentionally store a `ModuleId` as a plain `Guid` with no EF navigation FK to `ModuleEntity` — Module has no inbound relationships from other entities yet, so this avoids premature coupling. Add the real FK in whatever later phase actually needs to join through it (Phase 5/6 module runtime).
+- **Design Document reflexive seeding** (R-DM16a) lives in `Host/DesignDocuments/`: `MarkdownRequirementParser` extracts `R-XXX` blocks from `TechDesign.md` (handles both `R-XXX — Title` and bare `R-XXX` header forms — the one reliable body-boundary rule is "next `R-XXX` header line", since blank lines and bullet-style content appear inside real requirement bodies). `ReflexiveDesignDocumentSeeder` runs idempotently on every Host startup: creates a well-known `"Telechron"` system Project (owned by a non-loginable `system@telechron.internal` User) + its DesignDocument on first run, then upserts Requirements — unchanged text is a no-op, changed text creates a new `RequirementRevision` (never overwrites, per R-DM16b) and bumps `CurrentRevisionNumber`. Verified against the real `TechDesign.md`: 121 requirements parsed correctly. `ImplementationPlan.md` is NOT parsed into Requirement rows (no `R-XXX` IDs of its own) — it's process/checklist content, not itself a source of intent statements.
+- **Retention pass gotcha**: the SQLite EF Core provider (10.0.10) cannot translate `DateTimeOffset` relational comparisons (`<`, `>`) in LINQ — neither direct comparison nor `.ToUnixTimeMilliseconds()` translates. `RetentionPass` works around this by materializing the (bounded) table with `ToListAsync()` first and filtering/ordering by date client-side. Fine for a periodic batch job at this scale; revisit if Run/Finding volume grows large enough for this to matter (R-PER7's own framing — "unbounded growth is the normal operating loop" — means this may need a real translatable comparison or raw SQL eventually).
+- Retention scaffolding covers `Run` and `Finding` only (the two entities the plan named) — LLM call records don't exist as an entity yet (Phase 6), logs aren't a queryable table (they're blob-referenced), so both are deferred to whenever those land. `RetentionPolicy` (age+count) and `IRetentionArchive` (JSON Lines, filesystem, same directory family as the Artifact blob store) are designed to be reused as-is when that happens.
+- `FilesystemArtifactBlobStore` and `FilesystemRetentionArchive` both live under `Host/Persistence/` — GUID-prefixed two-level directory split for blobs (avoids huge flat dirs), path-traversal guard on read (blobRef values originate from DB rows, treated as untrusted input).
+- Test project `Tests/Host.Persistence.Tests/Phase3/` holds round-trip tests grouped by FK-dependency tier (matching the batches used during implementation); `Phase3Seeding.cs` is the shared FK-seeding helper (User→Project, Machine, LlmConnection, Workflow→WorkflowRun, Run, Finding).
+- A parallel Workflow run was attempted for the bulk entity implementation and hit a session usage limit mid-flight; 4 of 14 dispatched entity agents (Function, LlmConnection, Machine, Toolchain) completed and their output was validated + kept, the remaining 10 plus DesignDocument/Requirement were implemented directly. No workflow orchestration issue to flag — just a session budget constraint on that attempt.
 
 ---
 
