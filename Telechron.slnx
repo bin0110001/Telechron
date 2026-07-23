@@ -62,4 +62,7 @@
   <Folder Name="/Tests/Host.Reliability.Tests/">
     <Project Path="Tests/Host.Reliability.Tests/Telechron.Host.Reliability.Tests.csproj" />
   </Folder>
+  <Folder Name="/Tests/Host.Storefront.Tests/">
+    <Project Path="Tests/Host.Storefront.Tests/Telechron.Host.Storefront.Tests.csproj" />
+  </Folder>
 </Solution>
