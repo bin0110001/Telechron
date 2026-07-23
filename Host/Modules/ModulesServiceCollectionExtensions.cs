@@ -1,4 +1,5 @@
 using Telechron.Host.Modules.Integrity;
+using Telechron.Host.Modules.Permissions;
 using Telechron.Host.Modules.Runtime;
 using Telechron.Host.Modules.SelfTest;
 using Telechron.Sdk.Modules;
@@ -14,7 +15,10 @@ public static class ModulesServiceCollectionExtensions
         services.AddSingleton<TrustedPublisherKeyStore>();
         services.AddSingleton<IModuleIntegrityVerifier, ModuleIntegrityVerifier>();
         services.AddSingleton<IModuleRuntime, ModuleRuntime>();
+        services.AddSingleton<IContainerizedModuleSelfTestRunner, ContainerizedModuleSelfTestRunner>();
         services.AddSingleton<ISelfTestFalsifiabilityChecker, SelfTestFalsifiabilityChecker>();
+        services.AddSingleton<IModuleCapabilityMediator, ModuleCapabilityMediator>();
+        services.AddSingleton<IModuleTrustEvaluator, ModuleTrustEvaluator>();
         return services;
     }
 }

@@ -71,7 +71,12 @@ public sealed class CommandDispatchValidator : ICommandDispatchValidator
                 "moduleName": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$", "maxLength": 128 },
                 "moduleAssemblyBlobRef": { "type": "string", "pattern": "^(?!.*\\.\\.)[A-Za-z0-9_][A-Za-z0-9_./-]*$", "maxLength": 512 },
                 "toolchainImageDigest": { "type": "string", "pattern": "^[A-Za-z0-9.\\-/]+@sha256:[A-Fa-f0-9]{64}$", "maxLength": 512 },
-                "maximallyRestricted": { "type": "boolean" }
+                "maximallyRestricted": { "type": "boolean" },
+                "declaredCapabilities": {
+                  "type": "array",
+                  "items": { "type": "string", "pattern": "^[A-Za-z]+$", "maxLength": 64 },
+                  "maxItems": 32
+                }
               }
             }
             """),

@@ -30,6 +30,9 @@ public sealed class RunModuleSelfTestCommandHandler(
         var blobRef = parameters.GetProperty("moduleAssemblyBlobRef").GetString()!;
         var toolchainImageDigest = parameters.GetProperty("toolchainImageDigest").GetString()!;
         var maximallyRestricted = parameters.TryGetProperty("maximallyRestricted", out var restrictedProp) && restrictedProp.GetBoolean();
+        var declaredCapabilities = parameters.TryGetProperty("declaredCapabilities", out var capsProp)
+            ? capsProp.EnumerateArray().Select(e => e.GetString()!).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : [];
 
         var workspaceDir = Path.Combine(Path.GetTempPath(), "telechron-module-selftest-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspaceDir);
@@ -51,17 +54,25 @@ public sealed class RunModuleSelfTestCommandHandler(
                 ? new ContainerResourceLimits(MemoryBytes: 256 * 1024 * 1024, CpuCores: 0.5, DiskBytes: 0)
                 : new ContainerResourceLimits(MemoryBytes: 512 * 1024 * 1024, CpuCores: 1.0, DiskBytes: 0);
 
+            // R-MOD5b: "capability-denied beyond self-test needs" -- the
+            // sandbox grants exactly what the module DECLARED, nothing
+            // more. A module that declares InternetAccess gets network
+            // during its own self-test (so declaring-and-actually-using it
+            // is observable, not automatically denied); a module that
+            // doesn't declare it gets NetworkPolicy.None regardless of what
+            // its code tries to do, so an attempt shows up as a self-test
+            // failure -- that failure IS the under-declared-use signal,
+            // surfaced to whoever approves the module rather than silently
+            // allowed "just for the test."
+            var networkPolicy = declaredCapabilities.Contains("InternetAccess") ? new NetworkPolicy(true, []) : NetworkPolicy.None;
+
             var result = await containerExecutionService.ExecuteAsync(new ContainerExecutionRequest(
                 ImageDigest: toolchainImageDigest,
                 Command: ["dotnet", "/workspace/harness/Telechron.Tools.ModuleSelfTestHarness.dll", "/workspace/module.dll"],
                 WorkingDirectoryHostPath: workspaceDir,
                 ResourceLimits: resourceLimits,
-                // R-MOD5b: network-denied regardless of the module's
-                // declared capabilities -- pre-trust sandboxing means the
-                // self-test itself never gets InternetAccess even if the
-                // module will eventually be granted it.
-                NetworkPolicy: NetworkPolicy.None,
-                RequiresGpu: false,
+                NetworkPolicy: networkPolicy,
+                RequiresGpu: declaredCapabilities.Contains("GpuAccess"),
                 Timeout: TimeSpan.FromMinutes(5)), ct);
 
             return Interpret(moduleName, result);

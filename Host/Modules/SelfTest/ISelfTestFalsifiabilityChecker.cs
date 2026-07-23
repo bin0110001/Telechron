@@ -14,6 +14,6 @@ public sealed record FalsifiabilityCheckResult(bool IsFalsifiable, string Reason
 public interface ISelfTestFalsifiabilityChecker
 {
     Task<FalsifiabilityCheckResult> CheckAsync(
-        string moduleName, Guid machineId, string toolchainImageDigest,
+        string moduleName, Guid machineId, string toolchainImageDigest, IReadOnlyList<string> declaredCapabilities,
         string preSnapshotModuleAssemblyPath, string postSnapshotModuleAssemblyPath, CancellationToken ct = default);
 }
