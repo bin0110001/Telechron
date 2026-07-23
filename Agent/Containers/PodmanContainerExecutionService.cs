@@ -19,12 +19,21 @@ namespace Telechron.Agent.Containers;
 // R-SYS8: GPU-requesting containers are additionally gated on this Agent
 // being a dedicated single-tenant GPU Agent and on capability approval,
 // and the device is sanitized after every GPU-requesting container exits.
+//
+// R-SYS10: when request.WarmPoolKey is set (deterministic-fix batches
+// only, per R-FIX5 -- untrusted/LLM-synthesized code leaves it null), a
+// completed container is returned to the pool instead of removed, and the
+// next matching request reuses it instead of paying create+pull cost
+// again. GPU requests never pool -- single-tenancy (R-SYS8) already
+// dedicates the whole Agent per run, so there's no benefit and it would
+// add a second lifecycle to sanitize correctly.
 public sealed class PodmanContainerExecutionService(
     IDockerClient dockerClient,
     IImageProvenanceVerifier provenanceVerifier,
     IOptions<GpuTenancyPolicy> gpuTenancyPolicy,
     IGpuCapabilityGate gpuCapabilityGate,
     IGpuStateSanitizer gpuStateSanitizer,
+    IWarmContainerPool warmContainerPool,
     ILogger<PodmanContainerExecutionService> logger) : IContainerExecutionService
 {
     public async Task<ContainerExecutionResult> ExecuteAsync(ContainerExecutionRequest request, CancellationToken ct = default)
@@ -43,11 +52,26 @@ public sealed class PodmanContainerExecutionService(
                 return gpuRefusal;
         }
 
+        var poolKey = request.RequiresGpu ? null : request.WarmPoolKey;
         var stopwatch = Stopwatch.StartNew();
         string? containerId = null;
+        // Only a clean Completed outcome is eligible for pool reuse -- a
+        // timed-out, OOM-killed, or otherwise faulted container's state is
+        // suspect, so it's always removed instead, even when poolKey is set.
+        var eligibleForReuse = false;
         try
         {
-            containerId = await CreateContainerAsync(request, ct);
+            if (poolKey is not null)
+            {
+                var pooled = await warmContainerPool.CheckoutAsync(
+                    poolKey, request.WorkingDirectoryHostPath, checkoutCt => CreateContainerAsync(request, checkoutCt), ct);
+                containerId = pooled.ContainerId;
+            }
+            else
+            {
+                containerId = await CreateContainerAsync(request, ct);
+            }
+
             await dockerClient.Containers.StartContainerAsync(containerId, new ContainerStartParameters(), ct);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -73,6 +97,7 @@ public sealed class PodmanContainerExecutionService(
             var outcome = inspection.State.OOMKilled
                 ? ContainerExecutionOutcome.ResourceLimitExceeded
                 : ContainerExecutionOutcome.Completed;
+            eligibleForReuse = outcome == ContainerExecutionOutcome.Completed;
 
             return new ContainerExecutionResult(outcome, (int)waitResult.StatusCode, stdOut, stdErr, stopwatch.Elapsed);
         }
@@ -84,7 +109,12 @@ public sealed class PodmanContainerExecutionService(
         finally
         {
             if (containerId is not null)
-                await TryRemoveAsync(containerId, ct);
+            {
+                if (poolKey is not null && eligibleForReuse)
+                    await warmContainerPool.ReturnAsync(poolKey, request.WorkingDirectoryHostPath, containerId, ct);
+                else
+                    await TryRemoveAsync(containerId, ct);
+            }
 
             // R-SYS8: sanitize regardless of how execution ended (including
             // timeout/failure) -- a tenant's GPU memory must not survive to

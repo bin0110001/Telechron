@@ -46,12 +46,13 @@ public class PodmanContainerExecutionServiceLiveTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    private PodmanContainerExecutionService CreateService() =>
+    private PodmanContainerExecutionService CreateService(IWarmContainerPool? warmContainerPool = null) =>
         new(_dockerClient,
             new ImageProvenanceVerifier(Options.Create(new RegistryAllowlist())),
             Options.Create(new GpuTenancyPolicy()),
             new UnimplementedGpuCapabilityGate(),
             new NoOpGpuStateSanitizer(),
+            warmContainerPool ?? new PassthroughWarmContainerPool(),
             NullLogger<PodmanContainerExecutionService>.Instance);
 
     // None of these live tests exercise a real GPU device (no GPU hardware

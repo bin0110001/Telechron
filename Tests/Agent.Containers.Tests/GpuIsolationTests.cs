@@ -30,6 +30,7 @@ public class GpuIsolationTests
             policy,
             gate ?? new UnimplementedGpuCapabilityGate(),
             new NoOpGpuStateSanitizer(),
+            new PassthroughWarmContainerPool(),
             NullLogger<PodmanContainerExecutionService>.Instance);
     }
 

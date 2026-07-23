@@ -11,7 +11,8 @@ public static class ContainerServiceCollectionExtensions
         this IServiceCollection services,
         Action<PodmanConnectionOptions>? configureConnection = null,
         Action<RegistryAllowlist>? configureAllowlist = null,
-        Action<GpuTenancyPolicy>? configureGpuTenancy = null)
+        Action<GpuTenancyPolicy>? configureGpuTenancy = null,
+        Action<WarmContainerPoolOptions>? configureWarmPool = null)
     {
         services.Configure<PodmanConnectionOptions>(configureConnection ?? (_ => { }));
         services.Configure<RegistryAllowlist>(configureAllowlist ?? (_ => { }));
@@ -23,6 +24,7 @@ public static class ContainerServiceCollectionExtensions
             o.GpuDeviceIds = [];
             configureGpuTenancy?.Invoke(o);
         });
+        services.Configure<WarmContainerPoolOptions>(configureWarmPool ?? (_ => { }));
 
         services.AddSingleton<IDockerClient>(sp =>
         {
@@ -33,6 +35,7 @@ public static class ContainerServiceCollectionExtensions
         services.AddSingleton<IImageProvenanceVerifier, ImageProvenanceVerifier>();
         services.AddSingleton<IGpuCapabilityGate, UnimplementedGpuCapabilityGate>();
         services.AddSingleton<IGpuStateSanitizer, NvidiaSmiGpuStateSanitizer>();
+        services.AddSingleton<IWarmContainerPool, WarmContainerPool>();
         services.AddSingleton<IContainerExecutionService, PodmanContainerExecutionService>();
 
         return services;
