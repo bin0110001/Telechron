@@ -18,6 +18,9 @@
   <Folder Name="/Modules/GitHubConnector/">
     <Project Path="Modules/GitHubConnector/Telechron.Modules.GitHubConnector.csproj" />
   </Folder>
+  <Folder Name="/Modules/OllamaEngine/">
+    <Project Path="Modules/OllamaEngine/Telechron.Modules.OllamaEngine.csproj" />
+  </Folder>
   <Folder Name="/Modules/Sample/">
     <Project Path="Modules/Sample/Telechron.Modules.Sample.csproj" />
   </Folder>
