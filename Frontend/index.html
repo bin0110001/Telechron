@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telechron — Autonomous Agentic Coding & Workflow Platform</title>
+  <meta name="description" content="Telechron autonomous agentic coding, durable workflows, host sentinel repair, and design document governance platform." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body class="telechron-app">
+  <div id="app" class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-mark">⚡</div>
+        <div class="brand">
+          <span class="brand-title">TELECHRON</span>
+          <span class="brand-version">v1.0.0</span>
+        </div>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">CORE PLATFORM</div>
+        <a href="#dashboard" class="nav-item active" data-view="dashboard" id="nav-dashboard">
+          <span class="nav-icon">📊</span> Dashboard
+        </a>
+        <a href="#runs" class="nav-item" data-view="runs" id="nav-runs">
+          <span class="nav-icon">⚡</span> Runs & Work Queue
+        </a>
+        <a href="#projects" class="nav-item" data-view="projects" id="nav-projects">
+          <span class="nav-icon">📁</span> Projects
+        </a>
+        <a href="#workflows" class="nav-item" data-view="workflows" id="nav-workflows">
+          <span class="nav-icon">🔀</span> Workflows (Graph)
+        </a>
+        <a href="#designdoc" class="nav-item" data-view="designdoc" id="nav-designdoc">
+          <span class="nav-icon">📜</span> Design Document
+        </a>
+
+        <div class="nav-section-title">INFRASTRUCTURE</div>
+        <a href="#machines" class="nav-item" data-view="machines" id="nav-machines">
+          <span class="nav-icon">🖥️</span> Machines & Resources
+        </a>
+        <a href="#modules" class="nav-item" data-view="modules" id="nav-modules">
+          <span class="nav-icon">🧩</span> Modules & Connectors
+        </a>
+        <a href="#llm" class="nav-item" data-view="llm" id="nav-llm">
+          <span class="nav-icon">🧠</span> LLM & Spend Caps
+        </a>
+        <a href="#scheduling" class="nav-item" data-view="scheduling" id="nav-scheduling">
+          <span class="nav-icon">⏰</span> Scheduling
+        </a>
+        <a href="#secrets" class="nav-item" data-view="secrets" id="nav-secrets">
+          <span class="nav-icon">🔐</span> Secrets
+        </a>
+
+        <div class="nav-section-title">SECURITY & GOVERNANCE</div>
+        <a href="#approvals" class="nav-item" data-view="approvals" id="nav-approvals">
+          <span class="nav-icon">🛡️</span> Approval Queue <span class="badge badge-warning" id="pending-approvals-badge">2</span>
+        </a>
+        <a href="#privilegeddiff" class="nav-item" data-view="privilegeddiff" id="nav-privilegeddiff">
+          <span class="nav-icon">👁️</span> Privileged Diff Review
+        </a>
+        <a href="#provenance" class="nav-item" data-view="provenance" id="nav-provenance">
+          <span class="nav-icon">✍️</span> Provenance & Signatures
+        </a>
+        <a href="#auditlog" class="nav-item" data-view="auditlog" id="nav-auditlog">
+          <span class="nav-icon">📜</span> Audit Log
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-indicator">
+          <span class="pulse-dot"></span>
+          <span class="status-text">Sentinel Sentinel Active</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-container">
+      <header class="top-header">
+        <div class="header-left">
+          <h1 class="page-title" id="page-title">Dashboard</h1>
+          <span class="page-subtitle" id="page-subtitle">Realtime System Status & Overview</span>
+        </div>
+        <div class="header-right">
+          <div class="trace-pill">
+            <span class="pill-label">Trace ID</span>
+            <span class="pill-value" id="current-trace-id">tr_9f8a37b4e21</span>
+          </div>
+          <div class="user-profile">
+            <div class="avatar">A</div>
+            <span class="user-role">Admin (Lead)</span>
+          </div>
+        </div>
+      </header>
+
+      <section id="view-container" class="view-container">
+        <!-- View Content Rendered Dynamically -->
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
