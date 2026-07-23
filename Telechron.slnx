@@ -15,6 +15,9 @@
   <Folder Name="/Modules/DotnetToolchain/">
     <Project Path="Modules/DotnetToolchain/Telechron.Modules.DotnetToolchain.csproj" />
   </Folder>
+  <Folder Name="/Modules/GitHubConnector/">
+    <Project Path="Modules/GitHubConnector/Telechron.Modules.GitHubConnector.csproj" />
+  </Folder>
   <Folder Name="/Modules/Sample/">
     <Project Path="Modules/Sample/Telechron.Modules.Sample.csproj" />
   </Folder>
