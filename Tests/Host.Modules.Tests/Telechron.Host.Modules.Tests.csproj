@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\Modules\Sample\Telechron.Modules.Sample.csproj" />
     <ProjectReference Include="..\..\Modules\DotnetToolchain\Telechron.Modules.DotnetToolchain.csproj" />
     <ProjectReference Include="..\..\Modules\DotnetTestRunner\Telechron.Modules.DotnetTestRunner.csproj" />
+    <ProjectReference Include="..\..\Modules\CoreFunctions\Telechron.Modules.CoreFunctions.csproj" />
   </ItemGroup>
 
 </Project>
