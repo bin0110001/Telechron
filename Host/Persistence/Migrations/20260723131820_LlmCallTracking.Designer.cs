@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Telechron.Host.Persistence;
 
@@ -10,9 +11,11 @@ using Telechron.Host.Persistence;
 namespace Telechron.Host.Persistence.Migrations
 {
     [DbContext(typeof(TelechronDbContext))]
-    partial class TelechronDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260723131820_LlmCallTracking")]
+    partial class LlmCallTracking
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");

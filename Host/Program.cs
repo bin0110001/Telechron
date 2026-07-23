@@ -5,6 +5,7 @@ using Telechron.Host.Agents;
 using Telechron.Host.Agents.Grpc;
 using Telechron.Host.Agents.Mtls;
 using Telechron.Host.DesignDocuments;
+using Telechron.Host.Llm;
 using Telechron.Host.Modules;
 using Telechron.Host.Persistence;
 using Telechron.Host.Security.Audit;
@@ -110,6 +111,22 @@ if (mtlsEnabled)
         if (configuredKeys is { Count: > 0 })
             o.TrustedKeys = configuredKeys;
     });
+
+    // R-LLM1/R-LLM4: the provider registry resolves engine modules via
+    // IModuleRuntime, registered just above -- same dependency ordering
+    // reason as AddTelechronModules itself.
+    builder.Services.AddTelechronLlm(
+        configureProviders: o =>
+        {
+            var configuredProviders = builder.Configuration.GetSection("Telechron:Llm:ProviderToModuleName").Get<Dictionary<string, string>>();
+            if (configuredProviders is { Count: > 0 })
+                o.ProviderToModuleName = configuredProviders;
+        },
+        configureSpendCaps: o =>
+        {
+            if (decimal.TryParse(builder.Configuration["Telechron:Llm:GlobalSpendCapUsd"], out var globalCap))
+                o.GlobalCapUsd = globalCap;
+        });
 
     // Kestrel's --urls/ASPNETCORE_URLS binding only applies when no endpoint
     // is configured via ConfigureKestrel — once we add the gRPC/mTLS

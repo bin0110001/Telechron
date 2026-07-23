@@ -30,6 +30,7 @@ public sealed class TelechronDbContext(DbContextOptions<TelechronDbContext> opti
     public DbSet<RequirementEntity> Requirements => Set<RequirementEntity>();
     public DbSet<RequirementRevisionEntity> RequirementRevisions => Set<RequirementRevisionEntity>();
     public DbSet<AgentSessionEntity> AgentSessions => Set<AgentSessionEntity>();
+    public DbSet<LlmCallEntity> LlmCalls => Set<LlmCallEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -317,6 +318,21 @@ public sealed class TelechronDbContext(DbContextOptions<TelechronDbContext> opti
                 .WithMany()
                 .HasForeignKey(s => s.MachineId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<LlmCallEntity>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Provider).IsRequired();
+            e.Property(c => c.Model).IsRequired();
+            e.HasOne(c => c.LlmConnection)
+                .WithMany()
+                .HasForeignKey(c => c.LlmConnectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(c => c.Project)
+                .WithMany()
+                .HasForeignKey(c => c.ProjectId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

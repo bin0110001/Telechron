@@ -53,6 +53,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IRequirementRepository, RequirementRepository>();
         services.AddScoped<IRequirementRevisionRepository, RequirementRevisionRepository>();
         services.AddScoped<IAgentSessionRepository, AgentSessionRepository>();
+        services.AddScoped<ILlmCallRepository, LlmCallRepository>();
 
         services.Configure<DatabaseBackupOptions>(o => o.BackupDirectory = backupDirectory);
         services.AddScoped<IDatabaseBackupService, SqliteDatabaseBackupService>();
