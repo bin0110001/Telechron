@@ -527,6 +527,9 @@ namespace Telechron.Host.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("LlmConnectionId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -541,9 +544,16 @@ namespace Telechron.Host.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ToolchainId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("LlmConnectionId");
+
                     b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("ToolchainId");
 
                     b.ToTable("Projects");
                 });
@@ -1077,13 +1087,27 @@ namespace Telechron.Host.Persistence.Migrations
 
             modelBuilder.Entity("Telechron.Host.Persistence.Entities.ProjectEntity", b =>
                 {
+                    b.HasOne("Telechron.Host.Persistence.Entities.LlmConnectionEntity", "LlmConnection")
+                        .WithMany()
+                        .HasForeignKey("LlmConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Telechron.Host.Persistence.Entities.UserEntity", "Owner")
                         .WithMany()
                         .HasForeignKey("OwnerUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Telechron.Host.Persistence.Entities.ToolchainEntity", "Toolchain")
+                        .WithMany()
+                        .HasForeignKey("ToolchainId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("LlmConnection");
+
                     b.Navigation("Owner");
+
+                    b.Navigation("Toolchain");
                 });
 
             modelBuilder.Entity("Telechron.Host.Persistence.Entities.ProjectMembershipEntity", b =>

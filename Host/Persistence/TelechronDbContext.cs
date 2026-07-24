@@ -75,6 +75,14 @@ public sealed class TelechronDbContext(DbContextOptions<TelechronDbContext> opti
                 .WithMany()
                 .HasForeignKey(p => p.OwnerUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.Toolchain)
+                .WithMany()
+                .HasForeignKey(p => p.ToolchainId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(p => p.LlmConnection)
+                .WithMany()
+                .HasForeignKey(p => p.LlmConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<SecretEntity>(e =>

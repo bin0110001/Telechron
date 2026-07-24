@@ -1,5 +1,6 @@
 namespace Telechron.Host.Scheduling.Tests;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Telechron.Host.Scheduling;
 using Telechron.Sdk.Domain;
@@ -10,8 +11,11 @@ public sealed class SchedulerServiceTests
     [Fact]
     public async Task TriggerScheduleAsync_SerializesPerProject_AndFiresWorkflow()
     {
-        var engine = new FakeWorkflowEngine();
-        var scheduler = new SchedulerService(engine, NullLogger<SchedulerService>.Instance);
+        var services = new ServiceCollection();
+        services.AddSingleton<Telechron.Sdk.Workflows.IWorkflowEngine>(new FakeWorkflowEngine());
+        var provider = services.BuildServiceProvider();
+
+        var scheduler = new SchedulerService(provider.GetRequiredService<IServiceScopeFactory>(), NullLogger<SchedulerService>.Instance);
 
         var projectId = Guid.NewGuid();
         var workflowId = Guid.NewGuid();

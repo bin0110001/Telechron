@@ -80,6 +80,35 @@ public sealed class CommandDispatchValidator : ICommandDispatchValidator
               }
             }
             """),
+        [CommandKinds.RunRepairVerify] = JsonSchema.FromText("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["workspaceBlobRef", "toolchainImageDigest", "testCommand", "testRunnerKind"],
+              "properties": {
+                "workspaceBlobRef": { "type": "string", "pattern": "^(?!.*\\.\\.)[A-Za-z0-9_][A-Za-z0-9_./-]*$", "maxLength": 512 },
+                "toolchainImageDigest": { "type": "string", "pattern": "^[A-Za-z0-9.\\-/]+@sha256:[A-Fa-f0-9]{64}$", "maxLength": 512 },
+                "testCommand": { "type": "string", "maxLength": 1024 },
+                "testRunnerKind": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "maxLength": 64 },
+                "environmentRequirements": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string", "maxLength": 512 }
+                }
+              }
+            }
+            """),
+        [CommandKinds.RunCapabilitySynthesisBuild] = JsonSchema.FromText("""
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sourceBundleBlobRef", "toolchainImageDigest", "moduleName"],
+              "properties": {
+                "sourceBundleBlobRef": { "type": "string", "pattern": "^(?!.*\\.\\.)[A-Za-z0-9_][A-Za-z0-9_./-]*$", "maxLength": 512 },
+                "toolchainImageDigest": { "type": "string", "pattern": "^[A-Za-z0-9.\\-/]+@sha256:[A-Fa-f0-9]{64}$", "maxLength": 512 },
+                "moduleName": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$", "maxLength": 128 }
+              }
+            }
+            """),
     };
 
     public CommandValidationResult Validate(string commandKind, string parametersJson)

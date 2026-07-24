@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.Extensions.DependencyInjection;
 using Telechron.Sdk.Persistence;
 using Telechron.Sdk.Security;
 using Telechron.Sdk.Security.Audit;
@@ -12,7 +13,7 @@ namespace Telechron.Host.Agents.Dispatch;
 // anything is queued — both are fine). Channels are per-process, so this
 // only works for a single Host instance; R-REL4's scaling ceiling already
 // documents the Host as a singleton for v1.
-public sealed class InMemoryDispatchQueue(ICommandDispatchValidator validator, IAuditLog auditLog) : IDispatchQueue
+public sealed class InMemoryDispatchQueue(ICommandDispatchValidator validator, IServiceScopeFactory scopeFactory) : IDispatchQueue
 {
     private readonly ConcurrentDictionary<Guid, Channel<DispatchedCommand>> _channels = new();
 
@@ -26,13 +27,18 @@ public sealed class InMemoryDispatchQueue(ICommandDispatchValidator validator, I
             // dispatch rejection block on a DB write. Loss of an audit entry
             // on process crash between these two lines is an accepted gap,
             // consistent with this queue's own not-persisted design.
-            _ = auditLog.AppendAsync(AuditEventKind.AuthorizationDenied, JsonSerializer.Serialize(new
+            _ = Task.Run(async () =>
             {
-                reason = "command_dispatch_validation_failed",
-                machineId,
-                command.CommandKind,
-                errors = result.Errors,
-            }));
+                using var scope = scopeFactory.CreateScope();
+                var auditLog = scope.ServiceProvider.GetRequiredService<IAuditLog>();
+                await auditLog.AppendAsync(AuditEventKind.AuthorizationDenied, JsonSerializer.Serialize(new
+                {
+                    reason = "command_dispatch_validation_failed",
+                    machineId,
+                    command.CommandKind,
+                    errors = result.Errors,
+                }));
+            });
             return result;
         }
 

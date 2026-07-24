@@ -178,6 +178,42 @@ public sealed class AgentServiceImpl(
         await responseStream.WriteAsync(new FetchArtifactChunk { Data = Google.Protobuf.ByteString.Empty, IsFinal = true }, context.CancellationToken);
     }
 
+    public override async Task<StoreArtifactResponse> StoreArtifact(
+        IAsyncStreamReader<StoreArtifactChunk> requestStream, ServerCallContext context)
+    {
+        var isFirstChunk = true;
+        var suggestedFileName = "artifact";
+        var tempPath = Path.Combine(Path.GetTempPath(), "telechron-store-artifact-" + Guid.NewGuid().ToString("N"));
+
+        await using (var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            await foreach (var chunk in requestStream.ReadAllAsync(context.CancellationToken))
+            {
+                if (isFirstChunk)
+                {
+                    await AuthenticateSessionAsync(chunk.MachineId, chunk.SessionToken, context.CancellationToken);
+                    if (!string.IsNullOrWhiteSpace(chunk.SuggestedFileName))
+                        suggestedFileName = chunk.SuggestedFileName;
+                    isFirstChunk = false;
+                }
+
+                if (!chunk.Data.IsEmpty)
+                    await fileStream.WriteAsync(chunk.Data.Memory, context.CancellationToken);
+            }
+        }
+
+        try
+        {
+            await using var readStream = File.OpenRead(tempPath);
+            var blobRef = await artifactBlobStore.SaveAsync(readStream, suggestedFileName, context.CancellationToken);
+            return new StoreArtifactResponse { BlobRef = blobRef };
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
+    }
+
     private IAsyncEnumerable<DispatchedCommand> ReadDispatchAsync(Guid machineId, CancellationToken ct) =>
         dispatchQueue.ReadAllAsync(machineId, ct);
 

@@ -41,6 +41,14 @@ public static class AuthServiceCollectionExtensions
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                // Without this, JwtBearerHandler silently remaps standard
+                // claim types (e.g. "sub" -> the legacy
+                // ClaimTypes.NameIdentifier URI) on the INBOUND/validation
+                // side even though JwtTokenService issues the token with
+                // the plain JwtRegisteredClaimNames.Sub type -- any
+                // server-side code reading User.FindFirstValue(Sub) would
+                // silently get null. Keep claims exactly as issued.
+                options.MapInboundClaims = false;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,

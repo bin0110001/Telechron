@@ -23,7 +23,7 @@ public static class ModulesServiceCollectionExtensions
         services.AddSingleton<IModuleRuntime, ModuleRuntime>();
         services.AddSingleton<IContainerizedModuleSelfTestRunner, ContainerizedModuleSelfTestRunner>();
         services.AddSingleton<ISelfTestFalsifiabilityChecker, SelfTestFalsifiabilityChecker>();
-        services.AddSingleton<IModuleCapabilityMediator, ModuleCapabilityMediator>();
+        services.AddScoped<IModuleCapabilityMediator, ModuleCapabilityMediator>();
         services.AddSingleton<IModuleTrustEvaluator, ModuleTrustEvaluator>();
         services.AddSingleton<InFlightInvocationTracker>();
         services.AddSingleton<IModuleDrainCoordinator, ModuleDrainCoordinator>();

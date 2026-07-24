@@ -41,8 +41,11 @@ builder.Services.Configure<ModuleSelfTestHarnessOptions>(o =>
         ?? Environment.GetEnvironmentVariable("TELECHRON_MODULE_SELFTEST_HARNESS_DIR") ?? o.HarnessPublishDirectory;
 });
 builder.Services.AddSingleton<ArtifactFetcher>();
+builder.Services.AddSingleton<ArtifactUploader>();
 builder.Services.AddSingleton<ModuleSelfTestHarnessLocator>();
 builder.Services.AddSingleton<ICommandHandler, RunModuleSelfTestCommandHandler>();
+builder.Services.AddSingleton<ICommandHandler, RunRepairVerifyCommandHandler>();
+builder.Services.AddSingleton<ICommandHandler, RunCapabilitySynthesisBuildCommandHandler>();
 builder.Services.AddSingleton<CommandHandlerRegistry>();
 
 var host = builder.Build();

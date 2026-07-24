@@ -16,6 +16,7 @@ namespace Telechron.Host.Repair;
 public sealed class LlmFixGenerator(ILlmDispatcher dispatcher, LlmConnection connection) : ILlmFixGenerator
 {
     private const string SynthesisMarker = "REQUIRES_CAPABILITY_SYNTHESIS";
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<LlmFixResult> GenerateAsync(LlmFixContext context, CancellationToken ct = default)
     {
@@ -90,7 +91,7 @@ public sealed class LlmFixGenerator(ILlmDispatcher dispatcher, LlmConnection con
     {
         try
         {
-            var envelope = JsonSerializer.Deserialize<LlmPatchEnvelope>(responseText);
+            var envelope = JsonSerializer.Deserialize<LlmPatchEnvelope>(responseText, JsonOptions);
             if (envelope is null || envelope.Files.Count == 0)
                 return null;
 

@@ -1,14 +1,21 @@
 namespace Telechron.Host.Scheduling;
 
 using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Telechron.Sdk.Domain;
 using Telechron.Sdk.Scheduling;
 using Telechron.Sdk.Workflows;
 
+// SchedulerService is a singleton (it's also the IHostedService running the
+// background poll loop, and its in-memory schedule/lock state must be
+// shared with the ISchedulerService callers) -- but IWorkflowEngine is
+// scoped (DbContext-backed), so it's resolved from a fresh scope per call
+// rather than injected directly (which DI would reject as a captive
+// dependency).
 public sealed class SchedulerService(
-    IWorkflowEngine workflowEngine,
+    IServiceScopeFactory scopeFactory,
     ILogger<SchedulerService> logger) : BackgroundService, ISchedulerService
 {
     private readonly ConcurrentDictionary<Guid, ScheduleDefinition> _schedules = new();
@@ -53,6 +60,8 @@ public sealed class SchedulerService(
             if (schedule.SerializePerProject) _activeProjectLocks[schedule.ProjectId] = true;
             if (schedule.SerializePerMachine && schedule.MachineId.HasValue) _activeMachineLocks[schedule.MachineId.Value] = true;
 
+            using var scope = scopeFactory.CreateScope();
+            var workflowEngine = scope.ServiceProvider.GetRequiredService<IWorkflowEngine>();
             var run = await workflowEngine.StartWorkflowAsync(schedule.WorkflowId, ct: ct);
 
             _schedules[scheduleId] = schedule with { LastFiredAtUtc = DateTimeOffset.UtcNow };

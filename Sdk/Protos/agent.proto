@@ -36,6 +36,13 @@ service AgentService {
   // break the Host/Agent separation for any Agent not co-located with the
   // Host.
   rpc FetchArtifact (FetchArtifactRequest) returns (stream FetchArtifactChunk);
+
+  // Client-streaming reverse of FetchArtifact — an Agent that produced a
+  // new artifact (e.g. a container-built assembly from R-BUILD5 capability
+  // synthesis) pushes it into the Host's IArtifactBlobStore over this call,
+  // same reasoning as FetchArtifact: no Agent gets direct filesystem access
+  // to the Host's blob store.
+  rpc StoreArtifact (stream StoreArtifactChunk) returns (StoreArtifactResponse);
 }
 
 message RegisterAgentRequest {
@@ -115,4 +122,19 @@ message FetchArtifactChunk {
   // chunk for an empty blob) so the Agent knows the stream completed
   // rather than merely disconnected mid-transfer.
   bool is_final = 2;
+}
+
+// Auth fields are repeated on every chunk (rather than a separate
+// unary "begin" call) because gRPC client-streaming has nowhere else to
+// carry per-stream metadata without a second round trip; the Host only
+// actually needs to check them once, on the first chunk it receives.
+message StoreArtifactChunk {
+  string machine_id = 1;
+  string session_token = 2;
+  bytes data = 3;
+  string suggested_file_name = 4;
+}
+
+message StoreArtifactResponse {
+  string blob_ref = 1;
 }

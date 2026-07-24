@@ -5,14 +5,21 @@ using Telechron.Host.Agents;
 using Telechron.Host.Agents.Grpc;
 using Telechron.Host.Agents.Mtls;
 using Telechron.Host.DesignDocuments;
+using Telechron.Host.Health;
 using Telechron.Host.Llm;
 using Telechron.Host.Modules;
 using Telechron.Host.Persistence;
+using Telechron.Host.Reliability;
+using Telechron.Host.Repair;
+using Telechron.Host.Scheduling;
 using Telechron.Host.Security.Audit;
 using Telechron.Host.Security.Auth;
 using Telechron.Host.Security.Logging;
 using Telechron.Host.Security.Permissions;
 using Telechron.Host.Security.Secrets;
+using Telechron.Host.Storefront;
+using Telechron.Host.Synthesis;
+using Telechron.Host.Workflows;
 using Telechron.Sdk.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,6 +29,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// R-SEC6: shared per-Project visibility check used by the frontend-facing
+// REST controllers (Projects/Runs/DesignDocument/...).
+builder.Services.AddScoped<Telechron.Host.Controllers.IProjectAccessChecker, Telechron.Host.Controllers.ProjectAccessChecker>();
 
 var dataDirectory = builder.Configuration["Telechron:DataDirectory"]
     ?? Path.Combine(AppContext.BaseDirectory, "data");
@@ -69,6 +80,14 @@ var jwtSigningKey = builder.Configuration["Telechron:JwtSigningKey"]
     ?? string.Empty;
 builder.Services.AddTelechronApiAuth(new JwtOptions { SigningKey = jwtSigningKey });
 
+// R-SEC6: one-time setup-token bootstrap for the first Admin User -- see
+// SetupOptions/SetupController. No default token; unset means /api/setup
+// is permanently disabled (a fresh deploy with no token configured cannot
+// bootstrap itself, by design -- the operator must deliberately opt in).
+var setupToken = builder.Configuration["Telechron:SetupToken"]
+    ?? Environment.GetEnvironmentVariable("TELECHRON_SETUP_TOKEN");
+builder.Services.Configure<SetupOptions>(o => o.SetupToken = setupToken);
+
 // CORS restricted to explicitly configured origins (comma-separated); empty = deny all.
 var allowedOrigins = (builder.Configuration["Telechron:AllowedOrigins"] ?? string.Empty)
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -79,6 +98,20 @@ builder.Services.AddTelechronRateLimiting();
 builder.Services.AddTelechronPermissionMediation();
 
 builder.Services.AddTelechronDesignDocuments();
+
+// R-WF5/R-DM15: human approval bookkeeping has no Agent/mTLS dependency --
+// registered unconditionally so the human-facing approval API always works,
+// unlike AddTelechronWorkflows() below (needs IModuleRuntime, mTLS-gated).
+builder.Services.AddTelechronApprovals();
+
+// R-SCH1-5: SchedulerService/ResourceManager/PriorityQueue are pure
+// in-memory bookkeeping with no Agent/mTLS dependency at construction time
+// (SchedulerService only touches IWorkflowEngine, mTLS-gated, lazily inside
+// TriggerScheduleAsync via IServiceScopeFactory) -- same reasoning as
+// AddTelechronApprovals above. Registered unconditionally so
+// SchedulingController's read endpoints work without Agent transport
+// configured.
+builder.Services.AddTelechronScheduling();
 
 // R-SEC2/R-SCH3: Agent<->Host gRPC channel, authenticated by mTLS (transport)
 // plus a per-Machine session token (application-level, see AgentServiceImpl).
@@ -127,6 +160,45 @@ if (mtlsEnabled)
             if (decimal.TryParse(builder.Configuration["Telechron:Llm:GlobalSpendCapUsd"], out var globalCap))
                 o.GlobalCapUsd = globalCap;
         });
+
+    // R-SYS5: Storefront, disabled by default -- see AddTelechronModules
+    // comment above for why this needs the same Agent-gRPC precondition
+    // (its R-MOD5b sandbox stage dispatches through IModuleTrustEvaluator,
+    // which dispatches to a real Agent).
+    builder.Services.AddTelechronStorefront(o =>
+    {
+        if (bool.TryParse(builder.Configuration["Telechron:Storefront:Enabled"], out var enabled))
+            o.Enabled = enabled;
+    });
+
+    // R-WF1/R-WF4/R-WF5: workflow engine + durable-resume recovery.
+    builder.Services.AddTelechronWorkflows();
+
+    // R-NS2/R-FIX2/R-ENG4: the single repair pipeline's Project-independent
+    // gates plus IRepairPipelineFactory (needs IModuleRuntime, registered
+    // above, to resolve a Project's Toolchain/TestRunner).
+    builder.Services.AddTelechronRepair();
+
+    // R-REL3/R-REL4: Host Sentinel self-repair (needs IRepairPipelineFactory)
+    // + scaling monitor (needs real agent/workflow-run repositories, already
+    // available from AddTelechronPersistence).
+    builder.Services.AddTelechronReliability();
+
+    // R-BUILD1-5: intent planning + capability gap synthesis.
+    builder.Services.AddTelechronSynthesis(o =>
+    {
+        var keyId = builder.Configuration["Telechron:Synthesis:IntegrityKeyId"];
+        if (!string.IsNullOrEmpty(keyId))
+            o.KeyId = keyId;
+        var privateKey = builder.Configuration["Telechron:Synthesis:PrivateKeyPkcs8Base64"]
+            ?? Environment.GetEnvironmentVariable("TELECHRON_SYNTHESIS_PRIVATE_KEY");
+        if (!string.IsNullOrEmpty(privateKey))
+            o.PrivateKeyPkcs8Base64 = privateKey;
+    });
+
+    // R-PER5: telemetry batching + periodic flush.
+    builder.Services.AddSingleton<Telechron.Sdk.Telemetry.ITelemetryBatcher, Telechron.Host.Telemetry.TelemetryBatcher>();
+    builder.Services.AddHostedService<Telechron.Host.Telemetry.TelemetryFlushHostedService>();
 
     // Kestrel's --urls/ASPNETCORE_URLS binding only applies when no endpoint
     // is configured via ConfigureKestrel — once we add the gRPC/mTLS
@@ -199,6 +271,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// R-REL6: correlation ID established before anything else that might log
+// or need it for the rest of the request pipeline.
+app.UseMiddleware<Telechron.Host.Telemetry.CorrelationTracingMiddleware>();
+
 app.UseCors(AuthServiceCollectionExtensions.CorsPolicyName);
 app.UseRateLimiter();
 
@@ -206,6 +282,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthEndpoints();
 
 if (mtlsEnabled)
 {

@@ -13,7 +13,7 @@ public static class LlmServiceCollectionExtensions
         services.Configure<LlmCostEstimatorOptions>(configureCostEstimator ?? (_ => { }));
 
         services.AddSingleton<ILlmProviderRegistry, LlmProviderRegistry>();
-        services.AddSingleton<ISpendCapEnforcer, SpendCapEnforcer>();
+        services.AddScoped<ISpendCapEnforcer, SpendCapEnforcer>();
         services.AddSingleton<ILlmCostEstimator, LlmCostEstimator>();
         services.AddScoped<ILlmDispatcher, LlmDispatcher>();
 

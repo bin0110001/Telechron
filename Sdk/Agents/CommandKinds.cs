@@ -17,4 +17,17 @@ public static class CommandKinds
     // to test -- pre-patch or post-patch snapshot, or the version pending
     // pre-trust sandbox approval.
     public const string RunModuleSelfTest = "run-module-self-test";
+    // R-FIX2 Verify stage: fetches a zipped repair working-tree snapshot
+    // (workspaceBlobRef) from the Host, unpacks it, and runs the Project's
+    // Toolchain TestCommand inside a container (R-SYS6) -- the container
+    // execution boundary Verify needs but that only exists on the Agent.
+    public const string RunRepairVerify = "run-repair-verify";
+    // R-BUILD5: builds a Design-Doc-informed, LLM-synthesized module
+    // (source + self-test + a minimal .csproj referencing Telechron.Sdk,
+    // zipped as sourceBundleBlobRef) inside a container via `dotnet build`
+    // and `dotnet test`, then uploads the resulting assembly back to the
+    // Host via StoreArtifact so IModuleTrustEvaluator can run its real
+    // pre-trust pipeline (R-MOD5a/R-MOD5b) against a real compiled DLL,
+    // never against unverified source text.
+    public const string RunCapabilitySynthesisBuild = "run-capability-synthesis-build";
 }

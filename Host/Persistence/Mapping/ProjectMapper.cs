@@ -12,6 +12,8 @@ public static class ProjectMapper
         RootPath = entity.RootPath,
         OwnerUserId = entity.OwnerUserId,
         RepairPolicy = (RepairPolicy)entity.RepairPolicy,
+        ToolchainId = entity.ToolchainId,
+        LlmConnectionId = entity.LlmConnectionId,
         CreatedAtUtc = entity.CreatedAtUtc,
     };
 
@@ -22,6 +24,8 @@ public static class ProjectMapper
         RootPath = domain.RootPath,
         OwnerUserId = domain.OwnerUserId,
         RepairPolicy = (int)domain.RepairPolicy,
+        ToolchainId = domain.ToolchainId,
+        LlmConnectionId = domain.LlmConnectionId,
         CreatedAtUtc = domain.CreatedAtUtc,
     };
 
@@ -30,5 +34,7 @@ public static class ProjectMapper
         entity.Name = domain.Name;
         entity.RootPath = domain.RootPath;
         entity.RepairPolicy = (int)domain.RepairPolicy;
+        entity.ToolchainId = domain.ToolchainId;
+        entity.LlmConnectionId = domain.LlmConnectionId;
     }
 }

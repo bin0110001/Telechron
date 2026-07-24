@@ -1,59 +1,189 @@
+import { apiClient, ApiError, type WorkflowResponse } from '../api';
+
+interface WorkflowStepDefinition {
+  id: string;
+  name: string;
+  functionKind: string;
+  dependsOnStepIds?: string[];
+  moduleId?: string | null;
+}
+
+interface WorkflowDefinition {
+  name: string;
+  steps: WorkflowStepDefinition[];
+}
+
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 70;
+const COLUMN_GAP = 120;
+const ROW_GAP = 40;
+
 export function renderWorkflowsView(): string {
   return `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
       <div>
-        <h2 style="font-family: var(--font-heading); font-size: 18px; font-weight: 700;">Workflow Graph Editor & DAG Canvas</h2>
-        <p style="font-size: 12px; color: var(--text-muted);">Visual DAG graph builder, step dependency graph, and step parameter inspector (R-WF1/R-UI2).</p>
+        <h2 style="font-family: var(--font-heading); font-size: 18px; font-weight: 700;">Workflow Graph</h2>
+        <p style="font-size: 12px; color: var(--text-muted);">Real step dependency graph, rendered from the Workflow's own definition (R-WF1/R-WF6).</p>
       </div>
-      <div style="display: flex; gap: 8px;">
-        <button class="btn btn-primary">+ Add Step Node</button>
-        <button class="btn btn-primary" style="background: linear-gradient(135deg, var(--accent-emerald), var(--accent-cyan));">⚡ Execute Graph</button>
-      </div>
+      <select id="workflows-project-select" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm); padding: 6px;">
+        <option value="">Loading projects…</option>
+      </select>
     </div>
-
-    <!-- Graph Canvas Container -->
-    <div class="graph-canvas" id="workflow-graph-canvas">
-      <!-- Step Node 1: Checkout Git Repo -->
-      <div class="graph-node" style="top: 140px; left: 80px; border-color: var(--accent-cyan);">
-        <div class="graph-node-title">📁 Git Checkout Step</div>
-        <div class="graph-node-type">Module: GitHubConnector</div>
-        <div style="margin-top: 8px;"><span class="badge badge-success">Passed</span></div>
-      </div>
-
-      <!-- Step Connector Arrow 1 -->
-      <svg style="position: absolute; width: 100%; height: 100%; pointer-events: none;">
-        <path d="M 260 180 C 330 180, 330 180, 400 180" stroke="var(--accent-primary)" stroke-width="2" fill="none" stroke-dasharray="4 4" />
-        <path d="M 580 180 C 650 180, 650 280, 720 280" stroke="var(--accent-amber)" stroke-width="2" fill="none" />
-      </svg>
-
-      <!-- Step Node 2: Run Containerized Build & Test -->
-      <div class="graph-node" style="top: 140px; left: 400px; border-color: var(--accent-primary);">
-        <div class="graph-node-title">🧪 Container Test Step</div>
-        <div class="graph-node-type">Module: DotnetTestRunner</div>
-        <div style="margin-top: 8px;"><span class="badge badge-success">Passed (14s)</span></div>
-      </div>
-
-      <!-- Step Node 3: Privileged Approval Gate -->
-      <div class="graph-node" style="top: 240px; left: 720px; border-color: var(--accent-amber);">
-        <div class="graph-node-title">🛡️ Approval Gate</div>
-        <div class="graph-node-type">Gate: R-SEC4-privileged</div>
-        <div style="margin-top: 8px;"><span class="badge badge-warning">Awaiting Approval</span></div>
-      </div>
-    </div>
-
-    <!-- Selected Node Details Panel -->
-    <div class="card" style="margin-top: 20px;">
-      <div class="card-title">SELECTED STEP PARAMETERS & ARTIFACT OUTPUTS</div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
-        <div>
-          <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Step Name</label>
-          <input type="text" value="Container Test Step" class="prompt-input" style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 4px; width: 100%; border: 1px solid var(--border-color);" />
-        </div>
-        <div>
-          <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Target Module</label>
-          <input type="text" value="DotnetTestRunnerModule v1.0.0" class="prompt-input" style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 4px; width: 100%; border: 1px solid var(--border-color);" />
-        </div>
-      </div>
+    <div id="workflows-content">
+      <div class="card">Select a Project to view its Workflows.</div>
     </div>
   `;
+}
+
+export async function wireWorkflowsView(): Promise<void> {
+  const select = document.getElementById('workflows-project-select') as HTMLSelectElement | null;
+  const content = document.getElementById('workflows-content');
+  if (!select || !content) return;
+
+  try {
+    const projects = await apiClient.listProjects();
+    if (projects.length === 0) {
+      select.innerHTML = '<option value="">No Projects visible</option>';
+      content.innerHTML = '<div class="card">No Projects visible to your account yet.</div>';
+      return;
+    }
+
+    select.innerHTML = projects.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    select.addEventListener('change', () => loadWorkflowsForProject(select.value, content));
+    await loadWorkflowsForProject(select.value, content);
+  } catch (err) {
+    select.innerHTML = '<option value="">Error</option>';
+    content.innerHTML = `<div class="card" style="color: var(--accent-rose);">Failed to load Projects: ${
+      err instanceof ApiError ? err.message : String(err)
+    }</div>`;
+  }
+}
+
+async function loadWorkflowsForProject(projectId: string, content: HTMLElement): Promise<void> {
+  content.innerHTML = '<div class="card">Loading workflows…</div>';
+  try {
+    const workflows = await apiClient.listWorkflows(projectId);
+    if (workflows.length === 0) {
+      content.innerHTML = '<div class="card">No Workflows defined for this Project yet.</div>';
+      return;
+    }
+
+    content.innerHTML = `
+      <select id="workflow-select" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm); padding: 6px; margin-bottom: 16px;">
+        ${workflows.map((w) => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('')}
+      </select>
+      <div id="workflow-graph-container"></div>
+    `;
+
+    const workflowSelect = document.getElementById('workflow-select') as HTMLSelectElement;
+    const graphContainer = document.getElementById('workflow-graph-container')!;
+    const renderSelected = () => {
+      const selected = workflows.find((w) => w.id === workflowSelect.value);
+      graphContainer.innerHTML = selected ? renderWorkflowGraph(selected) : '';
+    };
+    workflowSelect.addEventListener('change', renderSelected);
+    renderSelected();
+  } catch (err) {
+    content.innerHTML = `<div class="card" style="color: var(--accent-rose);">Failed to load Workflows: ${
+      err instanceof ApiError ? err.message : String(err)
+    }</div>`;
+  }
+}
+
+function renderWorkflowGraph(workflow: WorkflowResponse): string {
+  let definition: WorkflowDefinition;
+  try {
+    definition = JSON.parse(workflow.definitionJson);
+  } catch {
+    return `<div class="card" style="color: var(--accent-rose);">Could not parse this Workflow's definition JSON.</div>`;
+  }
+
+  const steps = definition.steps ?? [];
+  if (steps.length === 0) {
+    return '<div class="card">This Workflow has no steps.</div>';
+  }
+
+  const layers = layoutIntoLayers(steps);
+  const positions = new Map<string, { x: number; y: number }>();
+  layers.forEach((layer, columnIndex) => {
+    layer.forEach((step, rowIndex) => {
+      positions.set(step.id, {
+        x: columnIndex * (NODE_WIDTH + COLUMN_GAP) + 20,
+        y: rowIndex * (NODE_HEIGHT + ROW_GAP) + 20,
+      });
+    });
+  });
+
+  const canvasWidth = layers.length * (NODE_WIDTH + COLUMN_GAP) + 40;
+  const canvasHeight = Math.max(...layers.map((l) => l.length)) * (NODE_HEIGHT + ROW_GAP) + 40;
+
+  const edges = steps.flatMap((step) =>
+    (step.dependsOnStepIds ?? [])
+      .filter((depId) => positions.has(depId))
+      .map((depId) => {
+        const from = positions.get(depId)!;
+        const to = positions.get(step.id)!;
+        const x1 = from.x + NODE_WIDTH;
+        const y1 = from.y + NODE_HEIGHT / 2;
+        const x2 = to.x;
+        const y2 = to.y + NODE_HEIGHT / 2;
+        const midX = (x1 + x2) / 2;
+        return `<path d="M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}" stroke="var(--accent-primary)" stroke-width="2" fill="none" />`;
+      })
+  );
+
+  const nodes = steps.map((step) => {
+    const pos = positions.get(step.id)!;
+    return `
+      <div class="graph-node" style="position: absolute; top: ${pos.y}px; left: ${pos.x}px; width: ${NODE_WIDTH}px;">
+        <div class="graph-node-title">${escapeHtml(step.name)}</div>
+        <div class="graph-node-type">${escapeHtml(step.functionKind)}</div>
+      </div>
+    `;
+  });
+
+  return `
+    <div class="graph-canvas" style="position: relative; width: ${canvasWidth}px; height: ${canvasHeight}px; overflow: auto;">
+      <svg style="position: absolute; width: 100%; height: 100%; pointer-events: none;">
+        ${edges.join('')}
+      </svg>
+      ${nodes.join('')}
+    </div>
+  `;
+}
+
+// Real topological layering by DependsOnStepIds -- a step's column is one
+// past the maximum column of anything it depends on, so the graph reads
+// left-to-right in real dependency order rather than a fixed illustration.
+function layoutIntoLayers(steps: WorkflowStepDefinition[]): WorkflowStepDefinition[][] {
+  const stepById = new Map(steps.map((s) => [s.id, s]));
+  const columnOf = new Map<string, number>();
+
+  function resolveColumn(stepId: string, visiting: Set<string>): number {
+    if (columnOf.has(stepId)) return columnOf.get(stepId)!;
+    if (visiting.has(stepId)) return 0; // cycle guard -- treat as no further dependency
+
+    visiting.add(stepId);
+    const step = stepById.get(stepId);
+    const deps = step?.dependsOnStepIds ?? [];
+    const column = deps.length === 0
+      ? 0
+      : Math.max(...deps.filter((d) => stepById.has(d)).map((d) => resolveColumn(d, visiting))) + 1;
+    visiting.delete(stepId);
+    columnOf.set(stepId, column);
+    return column;
+  }
+
+  steps.forEach((s) => resolveColumn(s.id, new Set()));
+
+  const maxColumn = Math.max(...Array.from(columnOf.values()));
+  const layers: WorkflowStepDefinition[][] = Array.from({ length: maxColumn + 1 }, () => []);
+  steps.forEach((s) => layers[columnOf.get(s.id) ?? 0].push(s));
+  return layers;
+}
+
+function escapeHtml(value: string): string {
+  const div = document.createElement('div');
+  div.textContent = value;
+  return div.innerHTML;
 }

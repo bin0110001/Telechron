@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Host\Telechron.Host.csproj" />
     <ProjectReference Include="..\Host.Persistence.Tests\Telechron.Host.Persistence.Tests.csproj" />
+    <ProjectReference Include="..\Host.Repair.Tests\Telechron.Host.Repair.Tests.csproj" />
   </ItemGroup>
 
 </Project>
